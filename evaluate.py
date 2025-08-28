@@ -1,3 +1,36 @@
+'''
+# Create the output directory
+mkdir -p /home/umflint.edu/koernerg/roc_dumps
+
+# MI FEATURES
+# 10K sample size
+python evaluate.py \
+  --model_path "result/ExcelFormer/default/mixup(none)/android_security/42/10000/pytorch_model.pt" \
+  --dataset android_security --catenc --sample_size 10000 \
+  --mi_json "output/mi/android_security/full/mi_top25_catenc(1)_norm(quantile).json" \
+  --dump_roc /home/umflint.edu/koernerg/roc_dumps/excelformer_10000.json
+
+# 100K sample size  
+python evaluate.py \
+  --model_path "result/ExcelFormer/default/mixup(none)/android_security/42/100000/pytorch_model.pt" \
+  --dataset android_security --catenc --sample_size 100000 \
+  --mi_json "output/mi/android_security/full/mi_top25_catenc(1)_norm(quantile).json" \
+  --dump_roc /home/umflint.edu/koernerg/roc_dumps/excelformer_100000.json
+
+# Full dataset
+python evaluate.py \
+  --model_path "result/ExcelFormer/default/mixup(none)/android_security/42/full/pytorch_model.pt" \
+  --dataset android_security --catenc --sample_size full \
+  --mi_json "output/mi/android_security/full/mi_top25_catenc(1)_norm(quantile).json" \
+  --dump_roc /home/umflint.edu/koernerg/roc_dumps/excelformer_full.json
+
+# XGBOOST FEATURES
+python evaluate.py   --model_path "result/ExcelFormer/xgbfi/mixup(none)/android_security/42/10000/pytorch_model.pt"   --dataset android_security --catenc --sample_size 10000 --mi_json "output/mi/android_security/full/xgboost_feature_importance_20250827_230123.json" --dump_roc /home/umflint.edu/koernerg/roc_dumps/excelformer_xgbfi_10000.json
+python evaluate.py   --model_path "result/ExcelFormer/xgbfi/mixup(none)/android_security/42/100000/pytorch_model.pt"   --dataset android_security --catenc --sample_size 100000 --mi_json "output/mi/android_security/full/xgboost_feature_importance_20250827_230123.json" --dump_roc /home/umflint.edu/koernerg/roc_dumps/excelformer_xgbfi_100000.json
+python evaluate.py   --model_path "result/ExcelFormer/xgbfi/mixup(none)/android_security/42/full/pytorch_model.pt"   --dataset android_security --catenc --sample_size full --mi_json "output/mi/android_security/full/xgboost_feature_importance_20250827_230123.json" --dump_roc /home/umflint.edu/koernerg/roc_dumps/excelformer_xgbfi_full.json 
+
+'''
+
 import sys
 import os
 import math
@@ -37,7 +70,14 @@ def get_args():
     parser.add_argument("--dataset", type=str, default='android_security')
     parser.add_argument("--normalization", type=str, default='quantile')
     parser.add_argument("--catenc", action='store_true', default=True)
-    parser.add_argument("--sample_size", type=int, default=None, help="Sample size for plot title/filename")
+    parser.add_argument("--sample_size", type=str, choices=['10000', '50000', '100000', 'full'], default=None, help="Sample size for plot title/filename")
+    parser.add_argument("--mi_json", type=str, help="Path to pre-computed MI JSON file for feature selection (must match training)")
+    parser.add_argument(
+        "--dump_roc",
+        type=str,
+        default=None,
+        help="If set, write ROC fpr/tpr + AUC for val/test to this JSON file"
+    )
     return parser.parse_args()
 
 def main():
@@ -51,12 +91,47 @@ def main():
     transformation = Transformations(
         normalization=args.normalization if args.normalization != '__none__' else None
     )
+    
+    # MI JSON is REQUIRED - no fallback allowed
+    if not args.mi_json:
+        raise ValueError("--mi_json argument is REQUIRED. No fallback to hardcoded features allowed.")
+    
+    if not os.path.exists(args.mi_json):
+        raise FileNotFoundError(f"MI JSON file not found: {args.mi_json}")
+    
+    # Load features from MI JSON
+    print(f"[FEATURE SELECTION] Loading features from JSON: {args.mi_json}")
+    with open(args.mi_json, 'r') as f:
+        mi_data = json.load(f)
+    selected_features = mi_data['selected_names']
+    print(f"[FEATURE SELECTION] Using {len(selected_features)} features from JSON: {selected_features}")
+    print(f"[FEATURE SELECTION] JSON feature order: {selected_features}")
+    
+    # Store the JSON feature order for later reordering
+    json_feature_order = selected_features.copy()
+    
+    print(f"[FEATURE SELECTION] About to call build_dataset with features: {selected_features}")
     dataset = build_dataset(
         DATA / args.dataset,
         transformation,
         cache=False,
-        selected_features=XGBOOST_FEATURES
+        sample_size=args.sample_size,
+        indices_dir="./standardized_data",
+        selected_features=selected_features
     )
+    print(f"[FEATURE SELECTION] After build_dataset:")
+    print(f"[FEATURE SELECTION]   - dataset.num_feature_names: {dataset.num_feature_names}")
+    print(f"[FEATURE SELECTION]   - dataset.cat_feature_names: {dataset.cat_feature_names}")
+    print(f"[FEATURE SELECTION]   - Combined order: {dataset.cat_feature_names + dataset.num_feature_names}")
+    
+    # Build a name→index mapping from the *current* [cat + num] order to the JSON order.
+    current_order = (dataset.cat_feature_names or []) + (dataset.num_feature_names or [])
+    name_to_idx = {n: i for i, n in enumerate(current_order)}
+    missing = [n for n in json_feature_order if n not in name_to_idx]
+    if missing:
+        raise ValueError(f"Features from JSON not found in dataset: {missing}")
+    reindex = [name_to_idx[n] for n in json_feature_order]
+    print(f"[FEATURE SELECTION] Reorder indices: {reindex}")
 
     # === DEBUG PRINTS: Dataset structure and features ===
     print("[DEBUG][EVAL] dataset.X_num keys:", list(dataset.X_num.keys()))
@@ -97,28 +172,29 @@ def main():
     print(f"dataset.X_cat is not None: {dataset.X_cat is not None}")
     if args.catenc and dataset.X_cat is not None:
         print(">>> ENTERING CATBOOST ENCODER BLOCK")
-        cardinalities = dataset.get_category_sizes('train')
         enc = CatBoostEncoder(
-            cols=list(range(len(cardinalities))),
+            cols=list(range(len(dataset.cat_feature_names))),
             return_df=False
         ).fit(dataset.X_cat['train'], dataset.y['train'])
 
-        encoded_cat_test = enc.transform(dataset.X_cat['test']).astype(np.float32)
-        encoded_cat_val = enc.transform(dataset.X_cat['val']).astype(np.float32)
+        # Encode cats, concat as [encoded_cats, nums], THEN reorder to JSON order.
+        encoded_val = enc.transform(dataset.X_cat['val']).astype(np.float32)
+        encoded_test = enc.transform(dataset.X_cat['test']).astype(np.float32)
+        X_val_all = np.concatenate([encoded_val, dataset.X_num['val']], axis=1)
+        X_test_all = np.concatenate([encoded_test, dataset.X_num['test']], axis=1)
+        X_val = X_val_all[:, reindex].astype(np.float32)
+        X_test = X_test_all[:, reindex].astype(np.float32)
 
-        # Always concatenate: [cat, num]
-        X_test = np.concatenate([encoded_cat_test, dataset.X_num['test']], axis=1)
-        X_val = np.concatenate([encoded_cat_val, dataset.X_num['val']], axis=1)
-
-        print("[DEBUG][EVAL] Encoded cat shape (test):", encoded_cat_test.shape)
-        print("[DEBUG][EVAL] X_test shape after concat:", X_test.shape)
-        print("[DEBUG][EVAL] X_val shape after concat:", X_val.shape)
+        print("[DEBUG][EVAL] Encoded cat shape (test):", encoded_test.shape)
+        print("[DEBUG][EVAL] X_test shape after concat+reorder:", X_test.shape)
+        print("[DEBUG][EVAL] X_val shape after concat+reorder:", X_val.shape)
     else:
-        print(">>> SKIPPING CATBOOST ENCODER BLOCK, using only numerical features")
-        X_test = dataset.X_num['test']
-        X_val = dataset.X_num['val']
-        print("[DEBUG][EVAL] X_test shape (no catenc):", X_test.shape)
-        print("[DEBUG][EVAL] X_val shape (no catenc):", X_val.shape)
+        print(">>> SKIPPING CATBOOST ENCODER BLOCK, numeric-only path")
+        # Reorder numeric-only matrix by names too (still safe)
+        X_val = dataset.X_num['val'][:, reindex].astype(np.float32)
+        X_test = dataset.X_num['test'][:, reindex].astype(np.float32)
+        print("[DEBUG][EVAL] X_test shape (no catenc, after reorder):", X_test.shape)
+        print("[DEBUG][EVAL] X_val shape (no catenc, after reorder):", X_val.shape)
 
     # --- FIX: Feature count check is now AFTER concatenation ---
     expected_n_features = checkpoint.get('n_features', None)
@@ -126,16 +202,17 @@ def main():
         print(f"WARNING: Model was trained with {expected_n_features} features, but evaluation is using {X_test.shape[1]}.")
         print("You must retrain the model with the current feature selection logic.")
         sys.exit(1)
+    # Strong guard: name/order equality if present
+    if 'feature_names' in checkpoint:
+        if checkpoint['feature_names'] != json_feature_order:
+            raise RuntimeError(
+                "Feature name/order mismatch between training and evaluation.\n"
+                f"Train: {checkpoint['feature_names']}\n"
+                f"Eval:  {json_feature_order}"
+            )
     # --- END FIX ---
 
-    print("\n[DEBUG][EVAL] Final feature names (cat + num):")
-    if args.catenc and dataset.X_cat is not None:
-        print("Cat features (encoded):", dataset.cat_feature_names)
-        print("Num features:", dataset.num_feature_names)
-        print("Order for model input:", dataset.cat_feature_names + dataset.num_feature_names)
-    else:
-        print("Num features:", dataset.num_feature_names)
-        print("Order for model input:", dataset.num_feature_names)
+    print("Order for model input (JSON):", json_feature_order)
 
     print("[DEBUG][EVAL] X_test shape:", X_test.shape)
     print("[DEBUG][EVAL] X_val shape:", X_val.shape)
@@ -220,7 +297,7 @@ def main():
     plt.ylim([0.0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
-    size_str = f"{args.sample_size:,}" if args.sample_size else "Full"
+    size_str = f"{args.sample_size}" if args.sample_size else "Full"
     plt.title(f'ExcelFormer ROC Curve - {size_str} Samples')
     plt.legend(loc="lower right")
     plt.grid(True)
@@ -247,6 +324,27 @@ def main():
     print("Final feature order used for evaluation:")
     print(dataset.cat_feature_names + dataset.num_feature_names)
     print("X_test.shape:", X_test.shape)
+
+    # Dump ROC data to JSON if requested
+    if args.dump_roc:
+        os.makedirs(os.path.dirname(args.dump_roc), exist_ok=True)
+        payload = {
+            "model": "excelformer",
+            "size": str(args.sample_size or "full"),
+            "val": {
+                "fpr": [float(x) for x in fpr_val],
+                "tpr": [float(x) for x in tpr_val],
+                "auc": float(roc_auc_val),
+            },
+            "test": {
+                "fpr": [float(x) for x in fpr_test],
+                "tpr": [float(x) for x in tpr_test],
+                "auc": float(roc_auc_test),
+            },
+        }
+        with open(args.dump_roc, "w") as f:
+            json.dump(payload, f)
+        print(f"[EF] Wrote ROC dump to {args.dump_roc}")
 
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

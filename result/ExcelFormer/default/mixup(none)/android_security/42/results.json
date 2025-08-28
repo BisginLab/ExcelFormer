@@ -11,7 +11,7 @@
         "save": true,
         "catenc": true,
         "resume": null,
-        "sample_size": null
+        "sample_size": "full"
     },
     "final": 0.8287550182661989,
     "best": 0.8291121943474346,
@@ -35,5 +35,5 @@
             "weight_decay": 1e-05
         }
     },
-    "time": 464.5181174278259
+    "time": 466.98814058303833
 }

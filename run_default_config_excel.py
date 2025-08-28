@@ -1,4 +1,15 @@
 print("Entered training script...")
+'''
+python run_default_config_excel.py   --dataset android_security   --output result/ExcelFormer/default   --seed 42   --early_stop 20   --save   --catenc   --sample_size 10000   --mi_json "output/mi/android_security/full/mi_top25_catenc(1)_norm(quantile).json"
+python run_default_config_excel.py   --dataset android_security   --output result/ExcelFormer/default   --seed 42   --early_stop 20   --save   --catenc   --sample_size 100000   --mi_json "output/mi/android_security/full/mi_top25_catenc(1)_norm(quantile).json"
+python run_default_config_excel.py   --dataset android_security   --output result/ExcelFormer/default   --seed 42   --early_stop 20   --save   --catenc   --sample_size full   --mi_json "output/mi/android_security/full/mi_top25_catenc(1)_norm(quantile).json"
+
+python run_default_config_excel.py   --dataset android_security   --output result/ExcelFormer/xgbfi   --seed 42   --early_stop 20   --save   --catenc   --sample_size 10000   --mi_json "output/mi/android_security/full/xgboost_feature_importance_20250827_230123.json"
+python run_default_config_excel.py   --dataset android_security   --output result/ExcelFormer/xgbfi   --seed 42   --early_stop 20   --save   --catenc   --sample_size 100000   --mi_json "output/mi/android_security/full/xgboost_feature_importance_20250827_230123.json"
+python run_default_config_excel.py   --dataset android_security   --output result/ExcelFormer/xgbfi   --seed 42   --early_stop 20   --save   --catenc   --sample_size full   --mi_json "output/mi/android_security/full/xgboost_feature_importance_20250827_230123.json"
+
+xgboost_feature_importance_20250827_230123
+'''
 # Go to great lakes and test best model on test set.
 # Figure out how to properly evaluate xgboost and excelformer. check paper - 70s%?
 # push code to lab github
@@ -94,8 +105,9 @@ def get_training_args():
     parser.add_argument("--save", action='store_true', help='whether to save model')
     parser.add_argument("--catenc", action='store_true', help='whether to use catboost encoder for categorical features')
     parser.add_argument("--resume", type=str, default=None, help='path to checkpoint to resume from')
-    parser.add_argument("--sample_size", type=int, choices=[10000, 50000, 100000], default=None,
-                        help="Subset size for training/validation/test (matches XGBoost splits)")
+    parser.add_argument("--sample_size", type=str, choices=['10000', '50000', '100000', 'full'], default=None,
+                        help="Subset size for training/validation/test (matches XGBoost splits). Use 'full' for full dataset.")
+    parser.add_argument("--mi_json", type=str, help="Path to pre-computed MI JSON file for feature selection")
     args = parser.parse_args()
 
     args.output = f'{args.output}/mixup({args.mix_type})/{args.dataset}/{args.seed}'
@@ -159,7 +171,7 @@ seed_everything(args.seed)
 
 # === Load indices for ALL cases (including full dataset) ===
 # This ensures fair comparison with XGBoost by using committed splits for all sizes
-indices_dir = './indices'
+indices_dir = './standardized_data'
 if args.sample_size is not None:
     # Load subset indices
     train_indices = np.load(f"{indices_dir}/train_indices_{args.sample_size}.npy")
@@ -191,7 +203,7 @@ transformation = Transformations(
 dataset = build_dataset(
     DATA / args.dataset, transformation, T_cache,
     sample_size=args.sample_size, indices_dir=indices_dir,
-    selected_features=XGBOOST_FEATURES
+    mi_json_path=args.mi_json
 )
 
 if dataset.X_num['train'].dtype == np.float64:
@@ -212,7 +224,74 @@ if args.catenc and dataset.X_cat is not None:
 else:
     X_num_processed = dataset.X_num  # Use as-is if no catenc
 
-# Use X_num_processed for all downstream code
+#############################
+# FEATURE SELECTION (FROM JSON ONLY - NO FALLBACK)
+#############################
+
+if not args.mi_json:
+    raise ValueError("--mi_json argument is REQUIRED. No fallback to MI calculation allowed.")
+
+if not os.path.exists(args.mi_json):
+    raise FileNotFoundError(f"MI JSON file not found: {args.mi_json}")
+
+# Load pre-computed MI results from JSON
+print(f"[FEATURE SELECTION] Loading features from JSON: {args.mi_json}")
+with open(args.mi_json, 'r') as f:
+    mi_data = json.load(f)
+
+# Extract selected features by name
+selected_feature_names = mi_data['selected_names']
+K = len(selected_feature_names)
+
+print(f"[FEATURE SELECTION] JSON selected features: {selected_feature_names}")
+
+# Get the full feature order from the dataset (after CatBoost encoding if applicable)
+if args.catenc and dataset.X_cat is not None:
+    cat_feature_names = dataset.cat_feature_names or []
+    num_feature_names = dataset.num_feature_names or []
+    all_feature_names = cat_feature_names + num_feature_names
+else:
+    all_feature_names = dataset.num_feature_names or []
+
+print(f"[FEATURE SELECTION] Dataset feature order: {all_feature_names}")
+
+# Find indices of selected features in the current feature order
+keep_idx = []
+missing_features = []
+for feature_name in selected_feature_names:
+    if feature_name in all_feature_names:
+        keep_idx.append(all_feature_names.index(feature_name))
+    else:
+        missing_features.append(feature_name)
+
+if missing_features:
+    raise ValueError(f"Features from JSON not found in dataset: {missing_features}")
+
+if len(keep_idx) != K:
+    raise ValueError(f"Expected {K} features from JSON, but only found {len(keep_idx)}")
+
+print(f"[FEATURE SELECTION] Found indices: {keep_idx}")
+print(f"[FEATURE SELECTION] Reordered features: {[all_feature_names[i] for i in keep_idx]}")
+
+# Slice the data using the found indices
+X_num_processed = {k: v[:, keep_idx] for k, v in X_num_processed.items()}
+
+# Get MI scores for the selected features (for feat_mix if needed)
+mi_scores = np.array(mi_data['mi_scores_aligned'])
+selected_mi_scores = mi_scores[keep_idx]
+
+print(f"[FEATURE SELECTION] Loaded {K} features from JSON. Shapes:",
+      {k: v.shape for k, v in X_num_processed.items()})
+print(f"[FEATURE SELECTION] Selected feature names: {selected_feature_names}")
+print(f"[FEATURE SELECTION] Found indices: {keep_idx}")
+print(f"[FEATURE SELECTION] Using pre-computed MI scores from JSON")
+
+# Normalized MI for feat_mix (stable if sum == 0)
+den = selected_mi_scores.sum()
+sorted_mi_scores_np = (selected_mi_scores / den).astype(np.float32) if den > 0 else np.ones(K, np.float32) / K
+sorted_mi_scores = torch.from_numpy(sorted_mi_scores_np).float().to(device)
+
+# Now build tensors from the sliced matrices
 X_num, X_cat, ys = prepare_tensors(
     # Use processed features
     type('DatasetObj', (), {
@@ -235,33 +314,32 @@ print(f"X_num shape after prepare_tensors: {X_num['train'].shape}")
 if args.catenc:
     X_cat = None
 
-# ====== DO NOT PRINT OR USE mi_scores, mi_ranks, feature_mi_pairs, etc. ======
-
-# After CatBoost encoding, just use:
-n_num_features = X_num['train'].shape[1]  # Use processed X_num, not dataset.X_num
-print(f"n_num_features: {n_num_features}")
-
-# --- FIX: Define d_out here ---
-if hasattr(dataset, 'is_binclass') and dataset.is_binclass:
+# Set d_out and d_numerical AFTER slicing
+n_num_features = X_num['train'].shape[1]
+if dataset.is_binclass:
     d_out = 2
-elif hasattr(dataset, 'is_multiclass') and dataset.is_multiclass:
+elif dataset.is_multiclass:
     d_out = dataset.n_classes
 else:
     d_out = 1
-# --- END FIX ---
+print(f"n_num_features (top-{K}): {n_num_features}")
 
-# After MI calculation but before model creation
-# print("\n=== Mutual Information Feature Analysis ===")
-# all_features = (dataset.cat_feature_names or []) + (dataset.num_feature_names or [])
-# feature_mi_pairs = list(zip(all_features, mi_scores))
-# feature_mi_pairs.sort(key=lambda x: x[1], reverse=True)
-# print("\nFeatures ranked by MI score:")
-# for feature, mi in feature_mi_pairs:
-#     print(f"{feature}: {mi:.4f}")
-# print(f"MI scores for all features: {mi_scores}")
-# print(f"Features selected (all, ordered by MI): {mi_ranks}")
-# print(f"Number of features: Original={len(mi_scores)}, Selected={len(mi_ranks)}")
-# print("=== End Analysis ===\n")
+print("\nStarting training...")
+
+# Print what features we're actually training with
+print(f"\n=== FEATURES USED FOR TRAINING ===")
+print(f"Total features: {n_num_features}")
+print(f"X_num train shape: {X_num['train'].shape}")
+print(f"X_num val shape: {X_num['val'].shape}")
+print(f"X_num test shape: {X_num['test'].shape}")
+print(f"These are the top {n_num_features} features by MI score:")
+for i, feature_name in enumerate(selected_feature_names, 1):
+    print(f"  {i:2d}. {feature_name}")
+print(f"=== END FEATURE INFO ===\n")
+
+
+
+
 
 # After MI selection but before model creation (around line 213)
 # print("\n=== Final Feature List for Training ===")
@@ -655,11 +733,10 @@ for epoch in range(start_epoch, n_epochs + 1):
                 'val_metric': val_metric,
                 'test_metric': test_metric,
                 'running_time': running_time,
-                'n_features': n_num_features
+                'n_features': n_num_features,
+                'feature_names': selected_feature_names  # exact JSON order used for training
             }
             model_path = f"{args.output}/pytorch_model.pt"
-            if os.path.exists(model_path):
-                os.remove(model_path)
             torch.save(checkpoint, model_path)
     else:
         no_improvement += 1

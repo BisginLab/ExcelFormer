@@ -1,0 +1,15 @@
+{
+  "model": "ExcelFormer",
+  "sample_size": "10000",
+  "device": "cuda",
+  "test_size": 1500,
+  "test_time_s": 0.023,
+  "throughput_apps_per_s": 65874.982,
+  "test_auc": 0.4697407422645742,
+  "peak_vram_mb": 659,
+  "cpu_max_rss_mb": 0,
+  "model_bytes": 14612431,
+  "notes": {
+    "ensemble_size": 1
+  }
+}
