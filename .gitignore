@@ -15,3 +15,4 @@ lib/__pycache__/
 *.pth.tar
 *.pkl.tar
 __pycache__/
+standardized_data/
