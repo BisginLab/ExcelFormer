@@ -1,0 +1,117 @@
+Loading data...
+Applying CatBoost encoding to categorical features...
+Data shape after encoding: (724160, 25)
+Categorical features encoded: 7
+Numerical features: 18
+
+============================================================
+CHECKING AVAILABLE MODELS
+============================================================
+✅ Model found: result/ExcelFormer/default/mixup(none)/android_security/42/10000/pytorch_model.pt (13.9 MB)
+✅ Model found: result/ExcelFormer/default/mixup(none)/android_security/42/100000/pytorch_model.pt (13.9 MB)
+✅ Model found: result/ExcelFormer/default/mixup(none)/android_security/42/full/pytorch_model.pt (13.9 MB)
+✅ Model found: result/ExcelFormer/xgbfi/mixup(none)/android_security/42/10000/pytorch_model.pt (13.9 MB)
+✅ Model found: result/ExcelFormer/xgbfi/mixup(none)/android_security/42/100000/pytorch_model.pt (13.9 MB)
+✅ Model found: result/ExcelFormer/xgbfi/mixup(none)/android_security/42/full/pytorch_model.pt (13.9 MB)
+
+============================================================
+EVALUATING DEFAULT MODELS
+============================================================
+
+== Size: 10000 ==
+Loading model: result/ExcelFormer/default/mixup(none)/android_security/42/10000/pytorch_model.pt
+Loaded new-style checkpoint with 25 features
+d_numerical: 25
+weight shape: torch.Size([25, 256])
+bias shape: torch.Size([25, 256])
+Sample 10000 - Val: 1500, Test: 1500
+Evaluating validation set (1500 samples)...
+Processing 1500 samples in batches of 1000
+[VAL] AP=0.4496, baseline=0.5393
+Evaluating test set (1500 samples)...
+Processing 1500 samples in batches of 1000
+[TEST] AP=0.4539, baseline=0.5393
+
+== Size: 100000 ==
+Loading model: result/ExcelFormer/default/mixup(none)/android_security/42/100000/pytorch_model.pt
+Loaded new-style checkpoint with 25 features
+d_numerical: 25
+weight shape: torch.Size([25, 256])
+bias shape: torch.Size([25, 256])
+Sample 100000 - Val: 15000, Test: 15000
+Evaluating validation set (15000 samples)...
+Processing 15000 samples in batches of 1000
+[VAL] AP=0.6101, baseline=0.5405
+Evaluating test set (15000 samples)...
+Processing 15000 samples in batches of 1000
+[TEST] AP=0.6231, baseline=0.5405
+
+== Size: full ==
+Loading model: result/ExcelFormer/default/mixup(none)/android_security/42/full/pytorch_model.pt
+Loaded new-style checkpoint with 25 features
+d_numerical: 25
+weight shape: torch.Size([25, 256])
+bias shape: torch.Size([25, 256])
+Full dataset - Val: 108624, Test: 108624
+Evaluating validation set (108624 samples)...
+Processing 108624 samples in batches of 1000
+[VAL] AP=0.5288, baseline=0.5442
+Evaluating test set (108624 samples)...
+Processing 108624 samples in batches of 1000
+[TEST] AP=0.5286, baseline=0.5442
+
+[PLOT] Saved matrix plot to: pr_plots/excelformer_default_pr_matrix_20250830_172934.png
+[DEFAULT] Wrote PR dump to /home/umflint.edu/koernerg/pr_dumps/excelformer_default_pr_10000.json
+[DEFAULT] Wrote PR dump to /home/umflint.edu/koernerg/pr_dumps/excelformer_default_pr_100000.json
+[DEFAULT] Wrote PR dump to /home/umflint.edu/koernerg/pr_dumps/excelformer_default_pr_full.json
+
+============================================================
+EVALUATING XGBFI MODELS
+============================================================
+
+== Size: 10000 ==
+Loading model: result/ExcelFormer/xgbfi/mixup(none)/android_security/42/10000/pytorch_model.pt
+Loaded new-style checkpoint with 25 features
+d_numerical: 25
+weight shape: torch.Size([25, 256])
+bias shape: torch.Size([25, 256])
+Sample 10000 - Val: 1500, Test: 1500
+Evaluating validation set (1500 samples)...
+Processing 1500 samples in batches of 1000
+[VAL] AP=0.4638, baseline=0.5393
+Evaluating test set (1500 samples)...
+Processing 1500 samples in batches of 1000
+[TEST] AP=0.4738, baseline=0.5393
+
+== Size: 100000 ==
+Loading model: result/ExcelFormer/xgbfi/mixup(none)/android_security/42/100000/pytorch_model.pt
+Loaded new-style checkpoint with 25 features
+d_numerical: 25
+weight shape: torch.Size([25, 256])
+bias shape: torch.Size([25, 256])
+Sample 100000 - Val: 15000, Test: 15000
+Evaluating validation set (15000 samples)...
+Processing 15000 samples in batches of 1000
+[VAL] AP=0.5129, baseline=0.5405
+Evaluating test set (15000 samples)...
+Processing 15000 samples in batches of 1000
+[TEST] AP=0.5111, baseline=0.5405
+
+== Size: full ==
+Loading model: result/ExcelFormer/xgbfi/mixup(none)/android_security/42/full/pytorch_model.pt
+Loaded new-style checkpoint with 25 features
+d_numerical: 25
+weight shape: torch.Size([25, 256])
+bias shape: torch.Size([25, 256])
+Full dataset - Val: 108624, Test: 108624
+Evaluating validation set (108624 samples)...
+Processing 108624 samples in batches of 1000
+[VAL] AP=0.5663, baseline=0.5442
+Evaluating test set (108624 samples)...
+Processing 108624 samples in batches of 1000
+[TEST] AP=0.5638, baseline=0.5442
+
+[PLOT] Saved matrix plot to: pr_plots/excelformer_xgbfi_pr_matrix_20250830_172934.png
+[XGBFI] Wrote PR dump to /home/umflint.edu/koernerg/pr_dumps/excelformer_xgbfi_pr_10000.json
+[XGBFI] Wrote PR dump to /home/umflint.edu/koernerg/pr_dumps/excelformer_xgbfi_pr_100000.json
+[XGBFI] Wrote PR dump to /home/umflint.edu/koernerg/pr_dumps/excelformer_xgbfi_pr_full.json

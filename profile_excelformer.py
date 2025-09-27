@@ -1,41 +1,94 @@
-# profile_excelformer_infer.py
-# 
-# Device Strategy:
-# - Default: CPU (--device cpu) for fair comparison with XGBoost
-# - Optional: GPU (--device cuda) for best available performance
-# - CPU vs CPU ensures apples-to-apples comparison
-# - GPU results can be shown in separate "best available device" table
-#
-import os, json, time, argparse
+# profile_excelformer.py
+# Profiles ExcelFormer inference using the SAME checkpoints, indices, and
+# preprocessing as excelformer_plot_pr.py. Writes one JSON per size to
+# ./compute_profiles (for the external compute-table script).
+
+import os, json, time, argparse, sys, csv
 from pathlib import Path
+from datetime import datetime
+
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from bin import ExcelFormer
-from lib import Transformations, build_dataset, prepare_tensors, DATA
+# training/eval utilities (same as PR script)
+from lib import Transformations, build_dataset, DATA, prepare_tensors
 from category_encoders import CatBoostEncoder
+from bin import ExcelFormer
 
-# Required deps for CPU memory monitoring
+# Optional deps for memory stats
 try:
     import psutil
-except ImportError:
-    print("WARNING: psutil not installed. CPU memory monitoring will be disabled.")
-    print("Install with: pip install psutil")
+except Exception:
     psutil = None
 
-def load_data(dataset, sample_size, indices_dir, normalization, mi_json, use_catenc=True):
-    T_cache = False
-    transformation = Transformations(normalization=normalization)
-    ds = build_dataset(DATA / dataset, transformation, T_cache,
-                       sample_size=sample_size, indices_dir=indices_dir, mi_json_path=mi_json)
+# ---------- Paths (match excelformer_plot_pr.py) ----------
+# PR script uses 'default' for MI-25 and 'xgbfi' for FI-25
+MODEL_TYPE_BY_FEATURE = {"MI-25": "default", "FI-25": "xgbfi"}
 
-    # CatBoost encode (fit on train only) then concat with numerics — identical to training
-    if use_catenc and ds.X_cat is not None:
-        card = ds.get_category_sizes('train')
-        enc = CatBoostEncoder(cols=list(range(len(card))), return_df=False).fit(ds.X_cat['train'], ds.y['train'])
-        X_num_processed = {k: np.concatenate([enc.transform(ds.X_cat[k]).astype(np.float32),
-                                              ds.X_num[k].astype(np.float32)], axis=1) for k in ['train','val','test']}
+# checkpoints produced by your training runs
+def ckpt_path(model_type: str, size: str) -> Path:
+    # result/ExcelFormer/{model_type}/mixup(none)/android_security/42/{size}/pytorch_model.pt
+    return Path("result") / "ExcelFormer" / model_type / "mixup(none)" / "android_security" / "42" / size / "pytorch_model.pt"
+
+# feature lists used at train time (same as PR script)
+MI_JSON_PATHS = {
+    "default": "output/mi/android_security/full/mi_top25_catenc(1)_norm(quantile).json",
+    "xgbfi":   "output/mi/android_security/full/xgboost_feature_importance_20250827_230123.json",
+}
+
+OUT_DIR_DEFAULT = "./compute_profiles"
+CSV_NAME = "compute_profiles_summary.csv"
+
+
+# ---------- helpers ----------
+def _cpu_rss_mb() -> int:
+    if psutil is None:
+        return 0
+    try:
+        return int(psutil.Process(os.getpid()).memory_info().rss / (1024**2))
+    except Exception:
+        return 0
+
+
+def _append_csv(row, csv_path):
+    csv_path = Path(csv_path)
+    write_header = not csv_path.exists()
+    with open(csv_path, "a", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(row.keys()))
+        if write_header: w.writeheader()
+        w.writerow(row)
+
+
+def _load_and_prepare(dataset_name: str, size: str, indices_dir: str, model_type: str):
+    """
+    Build dataset exactly like training, CatBoost-encode on train only,
+    then slice to the selected 25 features from the JSON list.
+    Returns dict X_num_processed, labels dict, and final feature count.
+    """
+    transformation = Transformations(normalization="quantile")
+    mi_json_path = MI_JSON_PATHS[model_type]
+    if not Path(mi_json_path).exists():
+        raise FileNotFoundError(f"Missing feature JSON: {mi_json_path}")
+
+    # Build dataset (same call signature used in PR)
+    ds = build_dataset(
+        DATA / dataset_name,
+        transformation,
+        cache=False,
+        sample_size=size,
+        indices_dir=indices_dir,
+        mi_json_path=mi_json_path,  # still pass, then explicitly slice below like PR script
+    )
+
+    # CatBoost encode on TRAIN, apply to all splits, then concat with numeric
+    if ds.X_cat is not None:
+        card = ds.get_category_sizes("train")
+        enc = CatBoostEncoder(cols=list(range(len(card))), return_df=False).fit(ds.X_cat["train"], ds.y["train"])
+        X_num_processed = {}
+        for k in ["train", "val", "test"]:
+            enc_cat = enc.transform(ds.X_cat[k]).astype(np.float32)
+            X_num_processed[k] = np.concatenate([enc_cat, ds.X_num[k].astype(np.float32)], axis=1)
         cat_names = ds.cat_feature_names or []
         num_names = ds.num_feature_names or []
         all_feature_names = cat_names + num_names
@@ -43,183 +96,198 @@ def load_data(dataset, sample_size, indices_dir, normalization, mi_json, use_cat
         X_num_processed = ds.X_num
         all_feature_names = ds.num_feature_names or []
 
-    # Build tensors (X_num_processed already sliced by mi_json inside build_dataset)
-    X_num, X_cat, ys = prepare_tensors(
-        type('D', (), {
-            'X_num': X_num_processed, 'X_cat': None if use_catenc else ds.X_cat, 'y': ds.y,
-            'n_classes': ds.n_classes, 'is_binclass': ds.is_binclass,
-            'is_multiclass': ds.is_multiclass, 'is_regression': ds.is_regression,
-            'calculate_metrics': ds.calculate_metrics, 'n_features': X_num_processed['train'].shape[1],
-            'num_feature_names': ds.num_feature_names, 'cat_feature_names': ds.cat_feature_names,
-            'get_category_sizes': ds.get_category_sizes,
-        })(), device=torch.device('cpu')  # tensors moved to device later
-    )
-    return ds, X_num, ys, all_feature_names
+    # Load selected feature names from JSON and slice columns to match training
+    with open(mi_json_path, "r") as f:
+        mi = json.load(f)
+    sel = mi.get("selected_names") or mi.get("selected_features")
+    if not sel:
+        raise ValueError(f"No selected feature list in {mi_json_path}")
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--dataset", required=True)
-    ap.add_argument("--ckpt", required=True, help="Path to saved ExcelFormer checkpoint (.pt)")
-    ap.add_argument("--mi_json", required=True)
-    ap.add_argument("--sample_size", choices=["10000","100000","full"], default="full")
-    ap.add_argument("--indices_dir", default="./standardized_data")
-    ap.add_argument("--normalization", default="quantile")
-    ap.add_argument("--device", choices=["cpu","cuda"], default="cpu", help="Device to run inference on. Use 'cpu' for fair comparison with XGBoost")
-    ap.add_argument("--out_json", default=None)
+    keep_idx = []
+    missing = []
+    for name in sel:
+        if name in all_feature_names:
+            keep_idx.append(all_feature_names.index(name))
+        else:
+            missing.append(name)
+    if missing:
+        raise ValueError(f"Selected features not found in dataset columns: {missing[:5]}{'...' if len(missing)>5 else ''}")
 
-    ap.add_argument("--warmup", type=int, default=1, help="Warmup batches before timing")
-    args = ap.parse_args()
+    X_num_processed = {k: v[:, keep_idx] for k, v in X_num_processed.items()}
 
-    device = torch.device("cuda" if args.device=="cuda" and torch.cuda.is_available() else "cpu")
-    
-    # Ensure CPU for fair comparison with XGBoost (which runs on CPU)
-    if args.device == "cpu":
-        device = torch.device("cpu")
-        print("[EF-PROFILER] Running on CPU for fair comparison with XGBoost")
-    elif args.device == "cuda" and not torch.cuda.is_available():
-        print("[EF-PROFILER] CUDA requested but not available, falling back to CPU")
-        device = torch.device("cpu")
+    ys = ds.y  # {'train','val','test'}
+    return X_num_processed, ys, len(keep_idx), ds
 
-    ds, X_num, ys, feat_names = load_data(
-        dataset=args.dataset,
-        sample_size=args.sample_size,
-        indices_dir=args.indices_dir,
-        normalization=args.normalization,
-        mi_json=args.mi_json,
-        use_catenc=True
-    )
 
-    # Dataloaders
-    bs = 8192 if X_num['test'].shape[1] <= 100 else 512
-    pin_memory = (device.type == "cuda")
-    num_workers = 0
-    persistent_workers = False
-    test_loader = DataLoader(
-        TensorDataset(X_num['test'], ys['test']), 
-        batch_size=bs, 
-        shuffle=False, 
-        pin_memory=pin_memory,
-        num_workers=num_workers, 
-        persistent_workers=persistent_workers
-    )
-
-    # Rebuild model with correct dimensionality (n_features) & outputs
-    n_num = X_num['test'].shape[1]
-    if ds.is_binclass: d_out = 2
-    elif ds.is_multiclass: d_out = ds.n_classes
-    else: d_out = 1
-
+def _build_model(n_features: int, d_out: int, device: torch.device) -> ExcelFormer:
     model = ExcelFormer(
-        d_numerical=n_num, d_out=d_out, categories=None,  # catenc -> all numeric now
-        prenormalization=True, token_bias=True,
-        ffn_dropout=0., attention_dropout=0.3, residual_dropout=0.0,
-        n_layers=3, n_heads=32, d_token=256, init_scale=0.01,
-        kv_compression=None, kv_compression_sharing=None
+        d_numerical=n_features,
+        d_out=d_out,
+        categories=None,
+        prenormalization=True,
+        token_bias=True,
+        n_layers=3,
+        n_heads=32,
+        d_token=256,
+        attention_dropout=0.3,
+        ffn_dropout=0.0,
+        residual_dropout=0.0,
+        kv_compression=None,
+        kv_compression_sharing=None,
+        init_scale=0.01,
     ).to(device)
+    return model
 
-    # Load checkpoint (expects 'model_state_dict')
-    print("[EF-PROFILER] Loading checkpoint...")
-    ckpt = torch.load(args.ckpt, map_location=device)
-    print("[EF-PROFILER] Checkpoint loaded, size:", len(ckpt) if isinstance(ckpt, dict) else "single tensor")
-    
-    print("[EF-PROFILER] Loading state dict...")
-    if isinstance(ckpt, dict) and 'model_state_dict' in ckpt:
-        model.load_state_dict(ckpt['model_state_dict'])
-        print("[EF-PROFILER] State dict loaded from 'model_state_dict' key")
-    else:
-        model.load_state_dict(ckpt)
-        print("[EF-PROFILER] State dict loaded directly")
-    
-    print("[EF-PROFILER] Setting model to eval mode...")
+
+def _measure_inference(model: torch.nn.Module, X_test: np.ndarray, y_test: np.ndarray, device: torch.device, warmup_batches: int = 1):
+    # Build loader
+    bs = 8192 if X_test.shape[1] <= 100 else 512
+    test_loader = DataLoader(TensorDataset(torch.from_numpy(X_test.astype(np.float32)), torch.from_numpy(y_test)), batch_size=bs, shuffle=False)
+
     model.eval()
-    print("[EF-PROFILER] Model ready for inference")
-
-    # Warmup (not timed)
     with torch.inference_mode():
         it = iter(test_loader)
-        for _ in range(max(0, args.warmup)):
+        for _ in range(max(0, warmup_batches)):
             try:
                 xb, _ = next(it)
             except StopIteration:
                 break
+            xb = xb[0].to(device, non_blocking=True) if isinstance(xb, (tuple, list)) else xb.to(device, non_blocking=True)
+            _ = model(xb, None)
+
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats()
+        torch.cuda.synchronize()
+
+    start = time.time()
+    with torch.inference_mode():
+        for xb, _ in test_loader:
             xb = xb.to(device, non_blocking=True)
             _ = model(xb, None)
     if device.type == "cuda":
         torch.cuda.synchronize()
 
-    # Inference timing
-    if device.type=="cuda":
-        torch.cuda.reset_peak_memory_stats()
-        torch.cuda.synchronize()
-    start = time.time()
-    preds = []
-    with torch.inference_mode():
-        for xb, yb in test_loader:
-            xb = xb.to(device, non_blocking=True)
-            logits = model(xb, None)
-            if ds.is_binclass:
-                p = torch.softmax(logits, dim=1)[:,1]
-            elif ds.is_multiclass:
-                p = torch.softmax(logits, dim=1).max(dim=1).values  # not used for AUC; dataset.calculate_metrics will.
-            else:
-                p = logits.squeeze()
-            preds.append(p.detach().cpu())
-    if device.type=="cuda":
-        torch.cuda.synchronize()
     total_s = time.time() - start
-    preds = torch.cat(preds).numpy()
+    peak_vram_mb = int(torch.cuda.max_memory_allocated() / (1024**2)) if device.type == "cuda" else 0
+    return total_s, peak_vram_mb
 
-    # Metrics - AUC computation removed for profiling
-    test_auc = None
 
-    n_test = len(ys['test'])
-    throughput = n_test / total_s if total_s > 0 else None
-    peak_vram_mb = int(torch.cuda.max_memory_allocated()/ (1024**2)) if device.type=="cuda" else 0
-    ckpt_bytes = Path(args.ckpt).stat().st_size if Path(args.ckpt).exists() else 0
+# ---------- main ----------
+def main():
+    ap = argparse.ArgumentParser(description="Profile ExcelFormer inference using standardized indices & training feature sets.")
+    ap.add_argument("--feature_set", choices=["MI-25", "FI-25"], required=True,
+                    help="Which ExcelFormer family to profile (maps to 'default' or 'xgbfi' folders).")
+    ap.add_argument("--dataset", default="android_security", help="Dataset name under lib.DATA (default: android_security)")
+    ap.add_argument("--device", choices=["cpu", "cuda"], default="cpu", help="Device for inference timing (default: cpu).")
+    ap.add_argument("--indices_dir", default="./standardized_data", help="Directory with *val/test_indices_{size}.npy*.")  # kept for parity
+    ap.add_argument("--sizes", nargs="*", choices=["10000", "100000", "full"], help="Subset of sizes to run (default: all).")
+    ap.add_argument("--warmup", type=int, default=1, help="Warmup batches before timing.")
+    ap.add_argument("--out_dir", default=OUT_DIR_DEFAULT, help="Where to save JSONs (default: ./compute_profiles).")
+    args = ap.parse_args()
 
-    # Get CPU memory usage
-    cpu_max_rss_mb = 0
-    if psutil is not None:
-        try:
-            proc = psutil.Process(os.getpid())
-            cpu_max_rss_mb = int(proc.memory_info().rss / (1024**2))
-        except Exception as e:
-            print(f"[EF-PROFILER] Warning: Failed to get CPU memory usage: {e}")
-            cpu_max_rss_mb = 0
-    else:
-        print("[EF-PROFILER] Warning: psutil not available. CPU memory will show as 0.")
-        print("Install psutil with: pip install psutil")
+    Path(args.out_dir).mkdir(parents=True, exist_ok=True)
+    rows = []
 
-    rec = {
-        "model": "ExcelFormer",
-        "sample_size": args.sample_size,
-        "device": str(device),
-        "test_size": n_test,
-        "test_time_s": round(total_s, 3),
-        "throughput_apps_per_s": None if throughput is None else round(throughput, 3),
-        "test_auc": test_auc,                        # renamed from test_auc_last
-        "peak_vram_mb": peak_vram_mb,
-        "cpu_max_rss_mb": cpu_max_rss_mb,           # added CPU memory monitoring
-        "model_bytes": int(ckpt_bytes),             # renamed from checkpoint_bytes
-        "notes": {
-            "ensemble_size": 1,                      # added ensemble info
-            "comparison_note": "CPU vs CPU for fair XGBoost comparison" if device.type == "cpu" else "GPU run for best performance"
+    model_type = MODEL_TYPE_BY_FEATURE[args.feature_set]
+    sizes = args.sizes or ["10000", "100000", "full"]
+
+    # Device selection (default CPU for apples-to-apples with XGB)
+    device = torch.device("cuda" if (args.device == "cuda" and torch.cuda.is_available()) else "cpu")
+    if args.device == "cuda" and device.type != "cuda":
+        print("[EF-PROFILER] CUDA requested but not available → using CPU")
+
+    for size in sizes:
+        ckpt = ckpt_path(model_type, size)
+        if not ckpt.exists():
+            print(f"⚠️  Missing checkpoint for {args.feature_set} {size}: {ckpt}")
+            continue
+
+        print(f"\n[EF-PROFILER] Loading data & features for {args.feature_set} • {size}")
+        X_num_processed, ys, n_feats, ds = _load_and_prepare(args.dataset, size, args.indices_dir, model_type)
+
+        # Build model with exact input dim & outputs
+        if ds.is_binclass:
+            d_out = 2
+        elif ds.is_multiclass:
+            d_out = ds.n_classes
+        else:
+            d_out = 1
+
+        model = _build_model(n_feats, d_out, device)
+
+        # Load weights (support old or new-style checkpoints)
+        state = torch.load(str(ckpt), map_location=device)
+        if isinstance(state, dict) and "model_state_dict" in state:
+            model.load_state_dict(state["model_state_dict"])
+        else:
+            model.load_state_dict(state)
+        model.eval()
+
+        # Run timing on TEST split
+        X_test = X_num_processed["test"]
+        y_test = ys["test"].astype(np.int64)
+        total_s, peak_vram_mb = _measure_inference(model, X_test, y_test, device, warmup_batches=args.warmup)
+
+        n_test = len(y_test)
+        throughput = n_test / total_s if total_s > 0 else None
+        model_bytes = ckpt.stat().st_size if ckpt.exists() else 0
+        cpu_rss_mb = _cpu_rss_mb()
+
+        rec = {
+            "model": "ExcelFormer",
+            "feature_set": args.feature_set,           # MI-25 / FI-25
+            "sample_size": size,
+            "device": device.type,
+            "test_size": int(n_test),
+            "test_time_s": round(total_s, 3),
+            "throughput_apps_per_s": None if throughput is None else round(throughput, 3),
+            "test_auc": None,                          # not computed in profiler
+            "peak_vram_mb": int(peak_vram_mb),
+            "cpu_max_rss_mb": int(cpu_rss_mb),
+            "model_bytes": int(model_bytes),
+            "notes": {
+                "ensemble_size": 1,
+                "comparison_note": "CPU vs CPU for fair XGBoost comparison" if device.type == "cpu" else "GPU run for best performance",
+            },
         }
-    }
 
-    out_path = args.out_json or f"compute_profiles/ExcelFormer-infer-{args.sample_size}_{int(time.time())}.json"
-    Path(Path(out_path).parent).mkdir(parents=True, exist_ok=True)
-    with open(out_path, "w") as f: json.dump(rec, f, indent=2)
-    print("[EF-PROFILER] Wrote:", out_path)
-    print(rec)
-    
-    # Print comparison guidance
-    if device.type == "cpu":
-        print("\n[EF-PROFILER] CPU run completed - use this for fair comparison with XGBoost")
-        print("For best performance comparison, run with --device cuda")
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_json = Path(args.out_dir) / f"ExcelFormer-infer-{args.feature_set}-{size}_{stamp}.json"
+        with open(out_json, "w") as f:
+            json.dump(rec, f, indent=2)
+        print(f"[EF-PROFILER] Wrote: {out_json}")
+        rows.append(rec)
+
+        # tidy
+        del model
+
+    # Optional CSV roll-up (same columns as your XGB profiler CSV block)
+    if rows:
+        csv_path = Path(args.out_dir) / CSV_NAME
+        for r in rows:
+            csv_row = {
+                "run_label": f"EF-{r['feature_set']}-{r['sample_size']}",
+                "dataset": args.dataset,
+                "feature_set": r["feature_set"],
+                "sample_size": r["sample_size"],
+                "wall_train_s": None,
+                "peak_ram_mb": r["cpu_max_rss_mb"],
+                "peak_vram_mb": r["peak_vram_mb"],
+                "val_auc_last": None,
+                "test_auc_last": r["test_auc"],
+                "test_time_s": r["test_time_s"],
+                "test_size": r["test_size"],
+                "throughput_apps_per_s": r["throughput_apps_per_s"],
+                "checkpoint_bytes": r["model_bytes"],
+                "checkpoint_path": "",  # EF checkpoints are loaded from result/… per size
+                "started_at": None,
+                "finished_at": None,
+            }
+            _append_csv(csv_row, csv_path)
+        print(f"[EF-PROFILER] Appended {len(rows)} row(s) to {csv_path}")
     else:
-        print("\n[EF-PROFILER] GPU run completed - this shows best available performance")
-        print("For fair XGBoost comparison, run with --device cpu")
+        print("Nothing to do. No records generated.")
+
 
 if __name__ == "__main__":
     main()

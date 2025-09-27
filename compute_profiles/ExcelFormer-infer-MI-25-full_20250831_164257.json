@@ -1,0 +1,17 @@
+{
+  "model": "ExcelFormer",
+  "feature_set": "MI-25",
+  "sample_size": "full",
+  "device": "cuda",
+  "test_size": 108624,
+  "test_time_s": 1.459,
+  "throughput_apps_per_s": 74433.327,
+  "test_auc": null,
+  "peak_vram_mb": 3520,
+  "cpu_max_rss_mb": 5401,
+  "model_bytes": 14613967,
+  "notes": {
+    "ensemble_size": 1,
+    "comparison_note": "GPU run for best performance"
+  }
+}

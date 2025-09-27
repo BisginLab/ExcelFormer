@@ -1,0 +1,17 @@
+{
+  "model": "ExcelFormer",
+  "feature_set": "MI-25",
+  "sample_size": "10000",
+  "device": "cpu",
+  "test_size": 1500,
+  "test_time_s": 0.675,
+  "throughput_apps_per_s": 2222.909,
+  "test_auc": null,
+  "peak_vram_mb": 0,
+  "cpu_max_rss_mb": 468,
+  "model_bytes": 14612431,
+  "notes": {
+    "ensemble_size": 1,
+    "comparison_note": "CPU vs CPU for fair XGBoost comparison"
+  }
+}

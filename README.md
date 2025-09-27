@@ -24,3 +24,62 @@ Run training script with
 '''python
 python -u run_default_config_excel.py --dataset android_security --normalization quantile --seed 42 --early_stop 20 --mix_type none --save --catenc 2>&1 | tee training_log_$(date +%Y%m%d_%H%M%S).txt
 '''
+
+## Averaging MI-25 and FI-25 for compute tables
+
+When you have two runs per model (ExcelFormer, XGBoost)—one trained with MI-25 and one with FI-25—aggregate compute metrics by averaging across the two feature regimes so the table shows a single line per {model, sample_size, device}.
+
+### Example runs for ExcelFormer:
+
+```bash
+# ExcelFormer (CPU fair-comparison), per size:
+python profile_excelformer.py \
+  --dataset android_security \
+  --sample_size 10000 \
+  --indices_dir ./standardized_data \
+  --normalization quantile \
+  --device cpu \
+  --ckpt result/ExcelFormer/default/mixup(none)/android_security/42/10000/pytorch_model.pt \
+  --mi_json output/mi/android_security/full/mi_top25_catenc(1)_norm(quantile).json \
+  --feature_set MI-25
+
+python profile_excelformer.py \
+  --dataset android_security \
+  --sample_size 10000 \
+  --indices_dir ./standardized_data \
+  --normalization quantile \
+  --device cpu \
+  --ckpt result/ExcelFormer/xgbfi/mixup(none)/android_security/42/10000/pytorch_model.pt \
+  --mi_json output/mi/android_security/full/xgboost_feature_importance_20250827_230123.json \
+  --feature_set FI-25
+```
+
+### Example runs for XGBoost:
+
+```bash
+python profile_xgboost.py \
+  --models '{"10000":"/home/umflint.edu/koernerg/xgboost/saved_models/xgboost_ensemble_standardized_10000_run_20250825_160615.joblib"}' \
+  --df_path ./content/sample_data/corrected_permacts.csv \
+  --indices_dir ./standardized_data \
+  --device cpu \
+  --single_model \
+  --feature_set MI-25
+
+python profile_xgboost.py \
+  --models '{"10000":"saved_models/xgboost_ensemble_fi_features_10000_run_20250828_061856.joblib"}' \
+  --df_path ./content/sample_data/corrected_permacts.csv \
+  --indices_dir ./standardized_data \
+  --device cpu \
+  --single_model \
+  --feature_set FI-25
+```
+
+### Then aggregate:
+
+```bash
+python scripts/make_compute_table_avg.py
+```
+
+**Outputs:**
+- `compute_profiles/compute_profiles_avg.csv`
+- `compute_profiles/compute_profiles_avg.tex`

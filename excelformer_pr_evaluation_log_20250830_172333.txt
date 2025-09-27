@@ -1,0 +1,41 @@
+Loading data...
+Applying CatBoost encoding to categorical features...
+Data shape after encoding: (724160, 25)
+Categorical features encoded: 7
+Numerical features: 18
+
+============================================================
+EVALUATING DEFAULT MODELS
+============================================================
+
+== Size: 10000 ==
+Loading model: result/ExcelFormer/default/android_security/42/10000/pytorch_model.pt
+Model not found: result/ExcelFormer/default/android_security/42/10000/pytorch_model.pt
+
+== Size: 100000 ==
+Loading model: result/ExcelFormer/default/android_security/42/100000/pytorch_model.pt
+Model not found: result/ExcelFormer/default/android_security/42/100000/pytorch_model.pt
+
+== Size: full ==
+Loading model: result/ExcelFormer/default/android_security/42/full/pytorch_model.pt
+Model not found: result/ExcelFormer/default/android_security/42/full/pytorch_model.pt
+
+[PLOT] Saved matrix plot to: pr_plots/excelformer_default_pr_matrix_20250830_172333.png
+
+============================================================
+EVALUATING XGBFI MODELS
+============================================================
+
+== Size: 10000 ==
+Loading model: result/ExcelFormer/xgbfi/android_security/42/10000/pytorch_model.pt
+Model not found: result/ExcelFormer/xgbfi/android_security/42/10000/pytorch_model.pt
+
+== Size: 100000 ==
+Loading model: result/ExcelFormer/xgbfi/android_security/42/100000/pytorch_model.pt
+Model not found: result/ExcelFormer/xgbfi/android_security/42/100000/pytorch_model.pt
+
+== Size: full ==
+Loading model: result/ExcelFormer/xgbfi/android_security/42/full/pytorch_model.pt
+Model not found: result/ExcelFormer/xgbfi/android_security/42/full/pytorch_model.pt
+
+[PLOT] Saved matrix plot to: pr_plots/excelformer_xgbfi_pr_matrix_20250830_172333.png

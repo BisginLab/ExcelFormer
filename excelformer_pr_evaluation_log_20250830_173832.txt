@@ -1,0 +1,84 @@
+=== EXCELFORMER PR EVALUATION WITH CORRECT PREPROCESSING ===
+
+============================================================
+CHECKING AVAILABLE MODELS
+============================================================
+✅ Model found: result/ExcelFormer/default/mixup(none)/android_security/42/10000/pytorch_model.pt (13.9 MB)
+✅ Model found: result/ExcelFormer/default/mixup(none)/android_security/42/100000/pytorch_model.pt (13.9 MB)
+✅ Model found: result/ExcelFormer/default/mixup(none)/android_security/42/full/pytorch_model.pt (13.9 MB)
+✅ Model found: result/ExcelFormer/xgbfi/mixup(none)/android_security/42/10000/pytorch_model.pt (13.9 MB)
+✅ Model found: result/ExcelFormer/xgbfi/mixup(none)/android_security/42/100000/pytorch_model.pt (13.9 MB)
+✅ Model found: result/ExcelFormer/xgbfi/mixup(none)/android_security/42/full/pytorch_model.pt (13.9 MB)
+
+============================================================
+EVALUATING DEFAULT MODELS
+============================================================
+Using MI JSON: output/mi/android_security/full/mi_top25_catenc(1)_norm(quantile).json
+
+== Size: 10000 ==
+Loading model: result/ExcelFormer/default/mixup(none)/android_security/42/10000/pytorch_model.pt
+Loaded new-style checkpoint with 25 features
+Feature names from checkpoint: ['ContentRating', 'LastUpdated', 'days_since_last_update']...
+d_numerical: 25
+weight shape: torch.Size([25, 256])
+bias shape: torch.Size([25, 256])
+Loading dataset with correct preprocessing...
+Error evaluating default 10000: build_dataset() got an unexpected keyword argument 'T_cache'
+
+== Size: 100000 ==
+Loading model: result/ExcelFormer/default/mixup(none)/android_security/42/100000/pytorch_model.pt
+Loaded new-style checkpoint with 25 features
+Feature names from checkpoint: ['ContentRating', 'LastUpdated', 'days_since_last_update']...
+d_numerical: 25
+weight shape: torch.Size([25, 256])
+bias shape: torch.Size([25, 256])
+Loading dataset with correct preprocessing...
+Error evaluating default 100000: build_dataset() got an unexpected keyword argument 'T_cache'
+
+== Size: full ==
+Loading model: result/ExcelFormer/default/mixup(none)/android_security/42/full/pytorch_model.pt
+Loaded new-style checkpoint with 25 features
+d_numerical: 25
+weight shape: torch.Size([25, 256])
+bias shape: torch.Size([25, 256])
+Loading dataset with correct preprocessing...
+Error evaluating default full: build_dataset() got an unexpected keyword argument 'T_cache'
+
+[PLOT] Saved matrix plot to: pr_plots/excelformer_default_pr_matrix_20250830_173832.png
+
+============================================================
+EVALUATING XGBFI MODELS
+============================================================
+Using MI JSON: output/mi/android_security/full/xgboost_feature_importance_20250827_230123.json
+
+== Size: 10000 ==
+Loading model: result/ExcelFormer/xgbfi/mixup(none)/android_security/42/10000/pytorch_model.pt
+Loaded new-style checkpoint with 25 features
+Feature names from checkpoint: ['ContentRating', 'Genre', 'CurrentVersion']...
+d_numerical: 25
+weight shape: torch.Size([25, 256])
+bias shape: torch.Size([25, 256])
+Loading dataset with correct preprocessing...
+Error evaluating xgbfi 10000: build_dataset() got an unexpected keyword argument 'T_cache'
+
+== Size: 100000 ==
+Loading model: result/ExcelFormer/xgbfi/mixup(none)/android_security/42/100000/pytorch_model.pt
+Loaded new-style checkpoint with 25 features
+Feature names from checkpoint: ['ContentRating', 'Genre', 'CurrentVersion']...
+d_numerical: 25
+weight shape: torch.Size([25, 256])
+bias shape: torch.Size([25, 256])
+Loading dataset with correct preprocessing...
+Error evaluating xgbfi 100000: build_dataset() got an unexpected keyword argument 'T_cache'
+
+== Size: full ==
+Loading model: result/ExcelFormer/xgbfi/mixup(none)/android_security/42/full/pytorch_model.pt
+Loaded new-style checkpoint with 25 features
+Feature names from checkpoint: ['ContentRating', 'Genre', 'CurrentVersion']...
+d_numerical: 25
+weight shape: torch.Size([25, 256])
+bias shape: torch.Size([25, 256])
+Loading dataset with correct preprocessing...
+Error evaluating xgbfi full: build_dataset() got an unexpected keyword argument 'T_cache'
+
+[PLOT] Saved matrix plot to: pr_plots/excelformer_xgbfi_pr_matrix_20250830_173832.png

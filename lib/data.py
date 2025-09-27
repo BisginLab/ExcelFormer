@@ -194,6 +194,20 @@ class Dataset:
         print(list(X_train.columns))
         print("[DEBUG][DATA] Dataset.num_feature_names:", num_features)
         print("[DEBUG][DATA] Dataset.cat_feature_names:", cat_features)
+        
+        # Final summary of dataset size
+        total_rows = len(df_train) + len(df_val) + len(df_test)
+        print(f"\n=== FINAL DATASET SUMMARY ===")
+        print(f"Total rows in dataset: {total_rows}")
+        print(f"Train rows: {len(df_train)}")
+        print(f"Validation rows: {len(df_val)}")
+        print(f"Test rows: {len(df_test)}")
+        print(f"Numerical features: {len(num_features)}")
+        print(f"Categorical features: {len(cat_features)}")
+        print(f"Total features: {len(num_features) + len(cat_features)}")
+        print(f"Target column: status (binary classification)")
+        print(f"================================\n")
+        
         return Dataset(
             X_num=X_num,
             X_cat=X_cat,

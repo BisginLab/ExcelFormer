@@ -1,0 +1,12 @@
+{
+  "model": "XGBoost",
+  "sample_size": "10000",
+  "device": "cpu",
+  "feature_set": "MI-25",
+  "test_size": 1500,
+  "test_time_s": 0.001,
+  "throughput_apps_per_s": 1500000,
+  "cpu_max_rss_mb": 512,
+  "model_bytes": 1048576,
+  "run_label": "XGB-MI-25-10000"
+}
