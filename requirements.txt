@@ -1,19 +1,26 @@
-catboost==1.0.6
-category_encoders==2.5.0
-gensim==4.2.0
-lightgbm==3.2.1
-matplotlib==3.5.2
-nirvana_dl==66.0.2
+# Core packages first (no dependencies)
 numpy>=1.21.0
-optuna==2.10.1
-pandas==1.3.5
-scikit_learn==1.0.2
-scipy==1.7.3
-tomli==2.0.1
-tomli_w==1.0.0
-# torch>=1.11.0+cu111
-torch_geometric==2.0.4
-torch_sparse==0.6.13
-typing_extensions==4.7.1
-xgboost==1.5.0
-zero==0.9.1
+pandas>=1.3.5
+matplotlib>=3.5.2
+scipy>=1.7.3
+scikit_learn>=1.0.2
+typing_extensions>=4.7.1
+tomli>=2.0.1
+tomli_w>=1.0.0
+
+# ML packages
+catboost>=1.2.0
+category_encoders>=2.5.0
+lightgbm>=3.2.1
+xgboost>=1.5.0
+optuna>=2.10.1
+
+# PyTorch ecosystem (install in order)
+torch>=1.11.0
+# torch_geometric>=2.0.4  # Skip for now - causes build issues
+# torch_sparse>=0.6.13    # Skip for now - causes build issues
+
+# Optional packages that might cause issues
+# gensim>=4.3.0  # Skip for now - can cause build issues
+# nirvana_dl>=66.0.2  # Not available on PyPI
+# zero>=0.9.1  # Not available on PyPI
