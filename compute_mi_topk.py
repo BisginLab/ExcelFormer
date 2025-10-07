@@ -66,7 +66,9 @@ def main():
 
     # Build dataset with the committed indices + normalization
     transformation = Transformations(normalization=(None if args.normalization == "__none__" else args.normalization))
-    ds = build_dataset(DATA / args.dataset, transformation, cache=False,
+    # Use the correct data path
+    data_path = '/home/umflint.edu/koernerg/android-security-comparison/AndroidSecurityComparison/data/raw'
+    ds = build_dataset(data_path, transformation, cache=False,
                        sample_size=args.sample_size, indices_dir=args.indices_dir)
 
     # Prepare numeric matrix to run MI on (AFTER CatBoost if requested)

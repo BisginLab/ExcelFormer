@@ -17,13 +17,13 @@ def load_json_data(json_path):
         data = json.load(f)
     
     # Get feature names and scores
-    feature_names = data['selected_names']
-    scores = data['mi_scores_aligned']
+    feature_names = data['selected_names']  # Already sorted by MI score (descending)
+    scores_by_name = data['mi_scores_by_name']  # Dictionary mapping feature names to scores
     
-    # Create a mapping of feature name to score
+    # Create a mapping of feature name to score using the correct order
     feature_scores = {}
-    for i, name in enumerate(feature_names):
-        feature_scores[name] = scores[i]
+    for name in feature_names:
+        feature_scores[name] = scores_by_name[name]
     
     return feature_scores, feature_names
 

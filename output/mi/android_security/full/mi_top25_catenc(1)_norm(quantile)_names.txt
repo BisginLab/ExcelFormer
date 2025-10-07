@@ -1,25 +1,25 @@
- 1. ContentRating
- 2. LastUpdated
- 3. days_since_last_update
- 4. highest_android_version
- 5. privacy_policy_link
- 6. TwoStarRatings
- 7. CurrentVersion
- 8. isSpamming
- 9. max_downloads_log
+ 1. highest_android_version
+ 2. ContentRating
+ 3. CurrentVersion
+ 4. privacy_policy_link
+ 5. LastUpdated
+ 6. days_since_last_update
+ 7. isSpamming
+ 8. developer_address
+ 9. developer_website
 10. OneStarRatings
-11. FourStarRatings
-12. ThreeStarRatings
+11. TwoStarRatings
+12. STORAGE
 13. lowest_android_version
-14. STORAGE
-15. FiveStarRatings
-16. LenWhatsNew
-17. AndroidVersion
-18. developer_address
-19. developer_website
-20. intent
-21. PHONE
-22. LOCATION
-23. DeveloperCategory
-24. ReviewsAverage
-25. Genre
+14. max_downloads_log
+15. PHONE
+16. FourStarRatings
+17. ThreeStarRatings
+18. DeveloperCategory
+19. AndroidVersion
+20. FiveStarRatings
+21. LenWhatsNew
+22. CONTACTS
+23. CAMERA
+24. intent
+25. LOCATION

@@ -2,13 +2,12 @@
 """
 Plot mutual information scores for all features in the android_security dataset.
 
-This script loads the original dataset WITHOUT doing any feature selection,
-uses the full feature set, and plots a bar chart of mutual information scores
-sorted by score. It calculates mutual information EXACTLY as the training script
-would calculate it in the commented out code.
+This script uses the same dataset-building pipeline as compute_mi_topk.py
+and calculates MI on the train split only, ensuring identical preprocessing
+and feature ordering as the training pipeline.
 
 Usage:
-    python plot_mi_scores.py [--dataset android_security] [--sample_size full] [--catenc] [--normalization quantile]
+    python plot_mi_scores.py [--dataset android_security] [--sample_size full] [--catenc] [--normalization quantile] [--json_ref path/to/mi_top25.json]
 """
 
 import argparse
@@ -19,6 +18,7 @@ import random
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import json
 from pathlib import Path
 from sklearn.feature_selection import mutual_info_classif, mutual_info_regression
 from category_encoders import CatBoostEncoder
@@ -60,6 +60,8 @@ def get_args():
                        help='Output plot filename')
     parser.add_argument('--indices_dir', type=str, default='./standardized_data',
                        help='Directory containing train/val/test indices')
+    parser.add_argument('--json_ref', type=str, default=None,
+                       help='Path to reference JSON file for comparison')
     return parser.parse_args()
 
 def main():
@@ -72,96 +74,42 @@ def main():
     print(f"Normalization: {args.normalization}")
     print(f"Seed: {args.seed}")
     
-    # Build dataset with the same transformations as training script
-    transformation = Transformations(
-        normalization=args.normalization if args.normalization != '__none__' else None
-    )
+    # Build dataset with the same pipeline as compute_mi_topk.py
+    transformation = Transformations(normalization=(None if args.normalization == "__none__" else args.normalization))
+    ds = build_dataset(DATA / args.dataset, transformation, cache=False,
+                       sample_size=args.sample_size, indices_dir=args.indices_dir)
     
-    # Load data directly from CSV (bypass the complex dataset loading)
-    csv_path = Path('/home/umflint.edu/koernerg/android-security-comparison/AndroidSecurityComparison/data/raw/corrected_permacts.csv')
-    print(f"Loading data from: {csv_path}")
-    
-    # Load and preprocess data exactly as in the training script
-    df = pd.read_csv(csv_path)
-    print(f"Initial DataFrame shape: {df.shape}")
-    
-    # Clean data exactly as in training script
-    df = df.dropna()
-    print(f"Shape after dropping NaNs: {df.shape}")
-    
-    if 'Unnamed: 0' in df.columns:
-        df = df.drop('Unnamed: 0', axis=1)
-        print(f"Shape after dropping 'Unnamed: 0': {df.shape}")
-        
-    df = df.drop(['pkgname'], axis=1)
-    print(f"Shape after dropping pkgname: {df.shape}")
-    
-    # Separate features and target
-    X = df.drop(['status'], axis=1)
-    y = df['status']
-    
-    print(f"Final data shape: X={X.shape}, y={y.shape}")
-    print(f"Target distribution: {y.value_counts().to_dict()}")
-    
-    # Identify numerical and categorical features
-    num_features = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    cat_features = X.select_dtypes(include=['object']).columns.tolist()
-    
-    print(f"Numerical features: {len(num_features)}")
-    print(f"Categorical features: {len(cat_features)}")
-    print(f"Total features: {len(num_features) + len(cat_features)}")
-    print(f"Expected features: 47 (49 columns - 2 dropped)")
-    
-    # Debug: print all column names and types
-    print(f"\nAll columns and their types:")
-    for col in X.columns:
-        print(f"  {col}: {X[col].dtype}")
-    
-    # Convert to numpy arrays
-    X_num = X.select_dtypes(include=['int64', 'float64']).values.astype(np.float32)
-    X_cat = X.select_dtypes(include=['object']).values if cat_features else None
-    
-    # Apply CatBoost encoding if requested (exactly as in training script)
-    if args.catenc and X_cat is not None:
+    # Prepare numeric matrix to run MI on (AFTER CatBoost if requested)
+    if ds.X_num["train"].dtype == np.float64:
+        ds.X_num = {k: v.astype(np.float32) for k, v in ds.X_num.items()}
+
+    if args.catenc and ds.X_cat is not None:
         print(f"\nApplying CatBoost encoding...")
-        # Get cardinalities for categorical features
-        cardinalities = [len(set(X_cat[:, i])) for i in range(X_cat.shape[1])]
-        
-        enc = CatBoostEncoder(
-            cols=list(range(len(cardinalities))), 
-            return_df=False
-        ).fit(X_cat, y)
-        
-        # Transform categorical features
-        X_cat_encoded = enc.transform(X_cat).astype(np.float32)
-        
-        # Combine categorical and numerical features
-        X_combined = np.concatenate([X_cat_encoded, X_num], axis=1)
-        all_feature_names = cat_features + num_features
-        
-        print(f"  Shape after encoding: {X_combined.shape}")
-        print(f"  Total features: {len(all_feature_names)}")
+        card = ds.get_category_sizes("train")
+        enc = CatBoostEncoder(cols=list(range(len(card))), return_df=False).fit(ds.X_cat["train"], ds.y["train"])
+        X_num_proc = {}
+        for split in ["train", "val", "test"]:
+            enc_cat = enc.transform(ds.X_cat[split]).astype(np.float32)
+            X_num_proc[split] = np.concatenate([enc_cat, ds.X_num[split]], axis=1)
+        # names are cat then num
+        all_feature_names = (ds.cat_feature_names or []) + (ds.num_feature_names or [])
     else:
-        X_combined = X_num
-        all_feature_names = num_features
-        print(f"  Using numerical features only: {len(all_feature_names)}")
-    
-    # Calculate mutual information (exactly as in training script)
-    print(f"\n=== Calculating Mutual Information Scores ===")
-    
-    # Choose MI function based on task type (binary classification)
-    mi_func = mutual_info_classif
-    
-    print(f"Computing MI on data: X={X_combined.shape}, y={y.shape}")
-    print(f"Using function: {mi_func.__name__}")
-    
+        X_num_proc = ds.X_num
+        all_feature_names = ds.num_feature_names or []
+
+    # Use ONLY the train split for MI calculation (exactly as in compute_mi_topk.py)
+    X_train = X_num_proc["train"]
+    y_train = ds.y["train"]
+    is_reg = bool(ds.is_regression)
+    mi_func = mutual_info_regression if is_reg else mutual_info_classif
+
+    # EXACT call (no kwargs) - match compute_mi_topk.py exactly
+    print(f"[MI] computing on train: X={X_train.shape}, y={y_train.shape}, catenc={args.catenc}")
     start_time = time.time()
-    mi_scores = mi_func(X_combined, y)
+    mi_scores = mi_func(X_train, y_train)
     calc_time = time.time() - start_time
     
-    print(f"MI calculation completed in {calc_time:.2f} seconds")
-    print(f"Number of features: {len(mi_scores)}")
-    print(f"MI scores range: [{mi_scores.min():.6f}, {mi_scores.max():.6f}]")
+    print(f"[MI] done in {calc_time:.2f}s. Features={len(mi_scores)}")
     
     # Sort features by MI score (descending)
     sorted_indices = np.argsort(-mi_scores)
@@ -174,19 +122,53 @@ def main():
     print(f"Features above 0.01 MI: {above_threshold}")
     print(f"Features below 0.01 MI: {below_threshold}")
     
+    # JSON comparison if reference provided
+    if args.json_ref and os.path.exists(args.json_ref):
+        print(f"\n=== Comparing with reference JSON: {args.json_ref} ===")
+        with open(args.json_ref, 'r') as f:
+            ref_data = json.load(f)
+        
+        k = ref_data.get('k', 25)
+        ref_selected = ref_data.get('selected_names', [])
+        ref_scores = ref_data.get('mi_scores_by_name', {})
+        
+        # The selected_names array is already sorted by MI score (descending)
+        # We need to get the scores for these selected features in the correct order
+        ref_scores_sorted = [ref_scores.get(name, 0) for name in ref_selected]
+        
+        print(f"Reference k: {k}")
+        print(f"Reference top-{k} features:")
+        for i, name in enumerate(ref_selected[:k]):
+            score = ref_scores_sorted[i]
+            print(f"  {i+1:2d}. {name:30s} {score:.6f}")
+        
+        print(f"\nCurrent top-{k} features:")
+        for i, name in enumerate(sorted_names[:k]):
+            score = sorted_scores[i]
+            print(f"  {i+1:2d}. {name:30s} {score:.6f}")
+        
+        print(f"\nRank differences (reference vs current):")
+        print(f"{'Rank':<4} {'Ref Feature':<30} {'Cur Feature':<30} {'Match':<5}")
+        print("-" * 75)
+        for i in range(min(k, len(ref_selected), len(sorted_names))):
+            ref_name = ref_selected[i] if i < len(ref_selected) else "N/A"
+            cur_name = sorted_names[i] if i < len(sorted_names) else "N/A"
+            match = "✓" if ref_name == cur_name else "✗"
+            print(f"{i+1:<4} {ref_name:<30} {cur_name:<30} {match:<5}")
+    
     # Create the plot
     print(f"\n=== Creating Plot ===")
     plt.figure(figsize=(20, 8))
     
-    # Create bar plot with different colors based on MI threshold (0.01)
+    # Create bar plot with different colors: top 25 in normal blue, rest in pale blue
     bars = []
     for i in range(len(sorted_scores)):
-        if sorted_scores[i] >= 0.01:
-            # Features above 0.01 MI: full blue
+        if i < 25:
+            # Top 25 features: normal blue
             bar = plt.bar(i, sorted_scores[i], color='steelblue', alpha=0.7, 
                          edgecolor='black', linewidth=0.5)
         else:
-            # Features below 0.01 MI: very pale blue
+            # Features beyond top 25: pale blue
             bar = plt.bar(i, sorted_scores[i], color='steelblue', alpha=0.2, 
                          edgecolor='black', linewidth=0.5)
         bars.extend(bar)
@@ -199,14 +181,8 @@ def main():
     # Add grid for better readability
     plt.grid(True, alpha=0.3, axis='y')
     
-    # Add dashed red horizontal line at 0.01 MI
-    plt.axhline(y=0.01, color='red', linestyle='--', linewidth=2, alpha=0.8, label='MI = 0.01')
-    
     # Show every feature name on x-axis
     plt.xticks(range(len(sorted_names)), sorted_names, rotation=45, ha='right', fontsize=8)
-    
-    # Add legend for the horizontal line
-    plt.legend(loc='upper right')
     
     # Adjust layout to prevent label cutoff
     plt.tight_layout()
