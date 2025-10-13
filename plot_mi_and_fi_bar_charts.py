@@ -39,34 +39,36 @@ def main():
     print(f"XGBoost features: {len(xgb_features)}")
     print(f"MI features: {len(mi_features)}")
     
-    # Create figure with two subplots
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(20, 12))
+    # Create figure with two subplots (side by side, vertical orientation)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 20))
     
-    # Top chart: XGBoost Feature Importance
+    # Left chart: XGBoost Feature Importance (vertical bars)
     xgb_values = [xgb_scores[f] for f in xgb_features]
-    bars1 = ax1.bar(range(len(xgb_features)), xgb_values, 
-                    color='steelblue', alpha=0.7, edgecolor='black', linewidth=0.5)
+    bars1 = ax1.barh(range(len(xgb_features)), xgb_values, 
+                     color='steelblue', alpha=0.7, edgecolor='black', linewidth=0.5)
     ax1.set_title('Feature Importance', fontsize=16, fontweight='bold')
-    ax1.set_ylabel('Feature Importance', fontsize=12)
-    ax1.set_xticks(range(len(xgb_features)))
-    ax1.set_xticklabels(xgb_features, rotation=45, ha='right', fontsize=8)
-    ax1.grid(True, alpha=0.3, axis='y')
+    ax1.set_xlabel('Feature Importance', fontsize=12)
+    ax1.set_yticks(range(len(xgb_features)))
+    ax1.set_yticklabels(xgb_features, fontsize=8)
+    ax1.invert_yaxis()  # Highest importance at top
+    ax1.grid(True, alpha=0.3, axis='x')
     
-    # Bottom chart: Mutual Information Scores (sorted by score)
+    # Right chart: Mutual Information Scores (sorted by score, vertical bars)
     # Sort MI features by their scores (descending)
     mi_feature_scores = [(f, mi_scores[f]) for f in mi_features]
     mi_feature_scores.sort(key=lambda x: x[1], reverse=True)
     mi_features_sorted = [f for f, _ in mi_feature_scores]
     mi_values_sorted = [s for _, s in mi_feature_scores]
     
-    bars2 = ax2.bar(range(len(mi_features_sorted)), mi_values_sorted, 
-                    color='darkorange', alpha=0.7, edgecolor='black', linewidth=0.5)
+    bars2 = ax2.barh(range(len(mi_features_sorted)), mi_values_sorted, 
+                     color='steelblue', alpha=0.7, edgecolor='black', linewidth=0.5)
     ax2.set_title('Mutual Information', fontsize=16, fontweight='bold')
-    ax2.set_ylabel('MI Score', fontsize=12)
-    ax2.set_xlabel('Features', fontsize=12)
-    ax2.set_xticks(range(len(mi_features_sorted)))
-    ax2.set_xticklabels(mi_features_sorted, rotation=45, ha='right', fontsize=8)
-    ax2.grid(True, alpha=0.3, axis='y')
+    ax2.set_xlabel('MI Score', fontsize=12)
+    ax2.set_ylabel('Features', fontsize=12)
+    ax2.set_yticks(range(len(mi_features_sorted)))
+    ax2.set_yticklabels(mi_features_sorted, fontsize=8)
+    ax2.invert_yaxis()  # Highest MI at top
+    ax2.grid(True, alpha=0.3, axis='x')
     
     # Adjust layout
     plt.tight_layout()
