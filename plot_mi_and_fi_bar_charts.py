@@ -49,7 +49,7 @@ def main():
     ax1.set_title('Feature Importance', fontsize=16, fontweight='bold')
     ax1.set_xlabel('Feature Importance', fontsize=12)
     ax1.set_yticks(range(len(xgb_features)))
-    ax1.set_yticklabels(xgb_features, fontsize=8)
+    ax1.set_yticklabels(xgb_features, fontsize=14)
     ax1.invert_yaxis()  # Highest importance at top
     ax1.grid(True, alpha=0.3, axis='x')
     
@@ -66,7 +66,7 @@ def main():
     ax2.set_xlabel('MI Score', fontsize=12)
     ax2.set_ylabel('Features', fontsize=12)
     ax2.set_yticks(range(len(mi_features_sorted)))
-    ax2.set_yticklabels(mi_features_sorted, fontsize=8)
+    ax2.set_yticklabels(mi_features_sorted, fontsize=14)
     ax2.invert_yaxis()  # Highest MI at top
     ax2.grid(True, alpha=0.3, axis='x')
     
