@@ -22,22 +22,22 @@ try:
 except Exception:
     psutil = None
 
-# ---------- Paths (match excelformer_plot_pr.py) ----------
-# PR script uses 'default' for MI-25 and 'xgbfi' for FI-25
-MODEL_TYPE_BY_FEATURE = {"MI-25": "default", "FI-25": "xgbfi"}
+# ---------- Paths (updated to match new repo structure) ----------
+MODEL_TYPE_BY_FEATURE = {"MI-25": "mi-25", "FI-25": "fi-25"}
 
 # checkpoints produced by your training runs
 def ckpt_path(model_type: str, size: str) -> Path:
-    # result/ExcelFormer/{model_type}/mixup(none)/android_security/42/{size}/pytorch_model.pt
-    return Path("result") / "ExcelFormer" / model_type / "mixup(none)" / "android_security" / "42" / size / "pytorch_model.pt"
+    # results/excelformer/{model_type}/mixup(none)/android_security/42/{size}/pytorch_model.pt
+    repo_root = Path(__file__).parent.parent.parent
+    return repo_root / "results" / "excelformer" / model_type / "mixup(none)" / "android_security" / "42" / size / "pytorch_model.pt"
 
-# feature lists used at train time (same as PR script)
+# feature lists used at train time
 MI_JSON_PATHS = {
-    "default": "output/mi/android_security/full/mi_top25_catenc(1)_norm(quantile).json",
-    "xgbfi":   "output/mi/android_security/full/xgboost_feature_importance_20250827_230123.json",
+    "mi-25": "../../data/feature_regimes/mi_top25_catenc(1)_norm(quantile).json",
+    "fi-25": "../../data/feature_regimes/xgboost_feature_importance_20250827_230123.json",
 }
 
-OUT_DIR_DEFAULT = "./compute_profiles"
+OUT_DIR_DEFAULT = "../../results/figures/compute_profiles"
 CSV_NAME = "compute_profiles_summary.csv"
 
 
@@ -179,7 +179,7 @@ def main():
                     help="Which ExcelFormer family to profile (maps to 'default' or 'xgbfi' folders).")
     ap.add_argument("--dataset", default="android_security", help="Dataset name under lib.DATA (default: android_security)")
     ap.add_argument("--device", choices=["cpu", "cuda"], default="cpu", help="Device for inference timing (default: cpu).")
-    ap.add_argument("--indices_dir", default="./standardized_data", help="Directory with *val/test_indices_{size}.npy*.")  # kept for parity
+    ap.add_argument("--indices_dir", default="../../data/splits", help="Directory with *val/test_indices_{size}.npy*.")  # updated to new structure
     ap.add_argument("--sizes", nargs="*", choices=["10000", "100000", "full"], help="Subset of sizes to run (default: all).")
     ap.add_argument("--warmup", type=int, default=1, help="Warmup batches before timing.")
     ap.add_argument("--out_dir", default=OUT_DIR_DEFAULT, help="Where to save JSONs (default: ./compute_profiles).")

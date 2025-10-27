@@ -1,11 +1,16 @@
 import json
 import pandas as pd
+from pathlib import Path
 from scipy.stats import spearmanr
 
 # --- Load your two JSONs ---
-with open("/home/umflint.edu/koernerg/new-excelformer/ExcelFormer/output/mi/android_security/full/mi_top25_catenc(1)_norm(quantile).json") as f:
+repo_root = Path(__file__).parent.parent.parent
+mi_json = repo_root / "data/feature_regimes/mi_top25_catenc(1)_norm(quantile).json"
+fi_json = repo_root / "data/feature_regimes/xgboost_feature_importance_20250827_230123.json"
+
+with open(mi_json) as f:
     mi_data = json.load(f)
-with open("/home/umflint.edu/koernerg/new-excelformer/ExcelFormer/output/mi/android_security/full/xgboost_feature_importance_20250827_230123.json") as f:
+with open(fi_json) as f:
     fi_data = json.load(f)
 
 mi_top = mi_data["selected_names"]
