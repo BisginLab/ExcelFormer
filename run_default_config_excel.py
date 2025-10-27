@@ -4,18 +4,25 @@ USAGE EXAMPLES:
 ---------------
 
 Train with MI top 25 features (Mutual Information):
-python run_default_config_excel.py   --dataset android_security   --output results/excelformer/default   --seed 42   --early_stop 20   --save   --catenc   --sample_size 10000   --mi_json "../../data/feature_regimes/mi_top25_catenc(1)_norm(quantile).json"
-python run_default_config_excel.py   --dataset android_security   --output results/excelformer/default   --seed 42   --early_stop 20   --save   --catenc   --sample_size 100000   --mi_json "../../data/feature_regimes/mi_top25_catenc(1)_norm(quantile).json"
-python run_default_config_excel.py   --dataset android_security   --output results/excelformer/default   --seed 42   --early_stop 20   --save   --catenc   --sample_size full   --mi_json "../../data/feature_regimes/mi_top25_catenc(1)_norm(quantile).json"
+python run_default_config_excel.py   --dataset android_security   --output results/excelformer/default   --seed 42   --early_stop 20   --save   --catenc   --sample_size 10000   --features mi-25
+python run_default_config_excel.py   --dataset android_security   --output results/excelformer/default   --seed 42   --early_stop 20   --save   --catenc   --sample_size 100000   --features mi-25
+python run_default_config_excel.py   --dataset android_security   --output results/excelformer/default   --seed 42   --early_stop 20   --save   --catenc   --sample_size full   --features mi-25
 
 Train with FI top 25 features (XGBoost Feature Importance):
-python run_default_config_excel.py   --dataset android_security   --output results/excelformer/xgbfi   --seed 42   --early_stop 20   --save   --catenc   --sample_size 10000   --mi_json "../../data/feature_regimes/xgboost_feature_importance_20250827_230123.json"
-python run_default_config_excel.py   --dataset android_security   --output results/excelformer/xgbfi   --seed 42   --early_stop 20   --save   --catenc   --sample_size 100000   --mi_json "../../data/feature_regimes/xgboost_feature_importance_20250827_230123.json"
-python run_default_config_excel.py   --dataset android_security   --output results/excelformer/xgbfi   --seed 42   --early_stop 20   --save   --catenc   --sample_size full   --mi_json "../../data/feature_regimes/xgboost_feature_importance_20250827_230123.json"
+python run_default_config_excel.py   --dataset android_security   --output results/excelformer/xgbfi   --seed 42   --early_stop 20   --save   --catenc   --sample_size 10000   --features fi-25
+python run_default_config_excel.py   --dataset android_security   --output results/excelformer/xgbfi   --seed 42   --early_stop 20   --save   --catenc   --sample_size 100000   --features fi-25
+python run_default_config_excel.py   --dataset android_security   --output results/excelformer/xgbfi   --seed 42   --early_stop 20   --save   --catenc   --sample_size full   --features fi-25
+
+FEATURE MODES:
+--------------
+- mi-25: Top 25 features selected by Mutual Information
+         (uses: ../../data/feature_regimes/mi_top25_catenc(1)_norm(quantile).json)
+- fi-25: Top 25 features selected by XGBoost Feature Importance
+         (uses: ../../data/feature_regimes/xgboost_feature_importance_20250827_230123.json)
 
 Models will be saved to: results/excelformer/{default|xgbfi}/mixup(none)/android_security/42/{sample_size}/pytorch_model.pt
 
-NOTE: Run this script from the models/excelformer directory
+NOTE: The --features argument is REQUIRED. Run this script from the models/excelformer directory.
 '''
 # Go to great lakes and test best model on test set.
 # Figure out how to properly evaluate xgboost and excelformer. check paper - 70s%?
@@ -114,8 +121,16 @@ def get_training_args():
     parser.add_argument("--resume", type=str, default=None, help='path to checkpoint to resume from')
     parser.add_argument("--sample_size", type=str, choices=['10000', '50000', '100000', 'full'], default=None,
                         help="Subset size for training/validation/test (matches XGBoost splits). Use 'full' for full dataset.")
-    parser.add_argument("--mi_json", type=str, help="Path to pre-computed MI JSON file for feature selection")
+    parser.add_argument("--features", type=str, choices=['mi-25', 'fi-25'], required=True,
+                        help="Feature set to use: mi-25 (Mutual Information top 25), fi-25 (Feature Importance top 25)")
     args = parser.parse_args()
+    
+    # Map feature selection to JSON paths
+    FEATURE_JSON_PATHS = {
+        'mi-25': '../../data/feature_regimes/mi_top25_catenc(1)_norm(quantile).json',
+        'fi-25': '../../data/feature_regimes/xgboost_feature_importance_20250827_230123.json'
+    }
+    args.mi_json = FEATURE_JSON_PATHS[args.features]
 
     args.output = f'{args.output}/mixup({args.mix_type})/{args.dataset}/{args.seed}'
     if not os.path.isdir(args.output):
@@ -235,14 +250,13 @@ else:
 # FEATURE SELECTION (FROM JSON ONLY - NO FALLBACK)
 #############################
 
-if not args.mi_json:
-    raise ValueError("--mi_json argument is REQUIRED. No fallback to MI calculation allowed.")
+print(f"[FEATURE SELECTION] Using feature mode: {args.features}")
+print(f"[FEATURE SELECTION] Loading features from JSON: {args.mi_json}")
 
 if not os.path.exists(args.mi_json):
-    raise FileNotFoundError(f"MI JSON file not found: {args.mi_json}")
+    raise FileNotFoundError(f"Feature JSON file not found: {args.mi_json}")
 
-# Load pre-computed MI results from JSON
-print(f"[FEATURE SELECTION] Loading features from JSON: {args.mi_json}")
+# Load pre-computed feature selection from JSON
 with open(args.mi_json, 'r') as f:
     mi_data = json.load(f)
 
