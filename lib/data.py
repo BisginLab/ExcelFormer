@@ -69,89 +69,91 @@ class Dataset:
         sample_size: int = None, 
         indices_dir: str = None,
         selected_features: list = None,
-        mi_json_path: str = None
+        feature_json_path: str = None
     ) -> 'Dataset':
+        """
+        Load dataset using standardized preprocessing.
+        
+        This method loads the CLEANED dataframe saved by master_preprocessing.py
+        and applies pre-computed indices directly. This ensures ExcelFormer uses
+        exactly the same data and splits as XGBoost for fair comparison.
+        """
         dir_ = Path(dir_)
-        print(f"Loading data from: {dir_}")
-        df = pd.read_csv(dir_ / 'corrected_permacts.csv')
-        print(f"Initial DataFrame shape: {df.shape}")
-        print(f"[ROW COUNTS] Initial rows: {len(df)}")
-        print("[DEBUG][DATA] DataFrame columns:", df.columns.tolist())
+        print(f"Loading standardized data from: {dir_}")
         
-        df = df.dropna()
-        print(f"Shape after dropping NaNs: {df.shape}")
-        print(f"[ROW COUNTS] After dropping NaNs: {len(df)}")
+        # Require indices for fair comparison
+        if indices_dir is None:
+            raise ValueError("indices_dir is required. Use indices created by master_preprocessing.py")
         
-        if 'Unnamed: 0' in df.columns:
-            df = df.drop('Unnamed: 0', axis=1)
-            print(f"Shape after dropping 'Unnamed: 0': {df.shape}")
-            print(f"[ROW COUNTS] After dropping 'Unnamed: 0': {len(df)}")
-            
-        df = df.drop(['pkgname'], axis=1)
-        print(f"Shape after dropping pkgname: {df.shape}")
-        print(f"[ROW COUNTS] After dropping pkgname: {len(df)}")
-
-        # === LOAD FEATURES FROM MI JSON IF PROVIDED ===
-        if mi_json_path and os.path.exists(mi_json_path):
-            import json
-            with open(mi_json_path, 'r') as f:
-                mi_data = json.load(f)
-            selected_features = mi_data['selected_names']
-            print(f"[MI JSON] Loaded {len(selected_features)} features from: {mi_json_path}")
-            print(f"[MI JSON] Selected features: {selected_features}")
-
-        # === ENFORCE FEATURE LIST AND ORDER ===
-        if selected_features is not None:
-            # Add a check to ensure all features exist
-            missing = [f for f in selected_features if f not in df.columns]
-            if missing:
-                raise ValueError(f"Missing features in DataFrame: {missing}")
-            print("[DEBUG][DATA] Selected features:", selected_features)
-            df = df[selected_features + ['status']]  # keep target
-            print(f"Shape after feature selection: {df.shape}")
-            print(f"[ROW COUNTS] After feature selection: {len(df)}")
-            print("[DEBUG][DATA] DataFrame columns after selection:", df.columns.tolist())
-
-        # === Subset using provided indices (for both subset and full dataset) ===
-        if indices_dir is not None:
-            # Save the original index before resetting
-            df['orig_index'] = df.index
-            df = df.reset_index(drop=True)
-            orig_index_to_new = dict(zip(df['orig_index'], df.index))
-            # Load indices based on sample_size or use "full" for full dataset
-            if sample_size is not None and sample_size != 'full':
-                train_idx = np.load(f"{indices_dir}/train_indices_{sample_size}.npy")
-                val_idx = np.load(f"{indices_dir}/val_indices_{sample_size}.npy")
-                test_idx = np.load(f"{indices_dir}/test_indices_{sample_size}.npy")
-                print(f"Loaded indices for sample size {sample_size}:")
-            else:
-                train_idx = np.load(f"{indices_dir}/train_indices_full.npy")
-                val_idx = np.load(f"{indices_dir}/val_indices_full.npy")
-                test_idx = np.load(f"{indices_dir}/test_indices_full.npy")
-                print(f"Loaded indices for full dataset:")
-            print(f"  train: {train_idx.shape}, val: {val_idx.shape}, test: {test_idx.shape}")
-            print(f"[ROW COUNTS] Indices loaded - train: {len(train_idx)}, val: {len(val_idx)}, test: {len(test_idx)}")
-            
-            # Map original indices to new positions
-            train_pos = [orig_index_to_new[i] for i in train_idx if i in orig_index_to_new]
-            val_pos = [orig_index_to_new[i] for i in val_idx if i in orig_index_to_new]
-            test_pos = [orig_index_to_new[i] for i in test_idx if i in orig_index_to_new]
-            
-            print(f"[ROW COUNTS] Mapped positions - train: {len(train_pos)}, val: {len(val_pos)}, test: {len(test_pos)}")
-            
-            df_train = df.iloc[train_pos]
-            df_val = df.iloc[val_pos]
-            df_test = df.iloc[test_pos]
-            
-            print(f"[ROW COUNTS] Final splits - train: {len(df_train)}, val: {len(df_val)}, test: {len(df_test)}")
-            print(f"[ROW COUNTS] Total rows in splits: {len(df_train) + len(df_val) + len(df_test)}")
-            
-            X_train, y_train = df_train.drop(['status', 'orig_index'], axis=1), df_train['status']
-            X_val, y_val = df_val.drop(['status', 'orig_index'], axis=1), df_val['status']
-            X_test, y_test = df_test.drop(['status', 'orig_index'], axis=1), df_test['status']
-        else:
-            # No fallback - require committed indices for fair comparison
-            raise ValueError("No indices provided. This dataset requires committed train/val/test splits for fair comparison with XGBoost. Use --sample_size to specify the dataset size.")
+        # Load metadata to get path to cleaned data
+        import json
+        metadata_path = Path(indices_dir) / 'preprocessing_metadata.json'
+        if not metadata_path.exists():
+            raise FileNotFoundError(
+                f"Preprocessing metadata not found at: {metadata_path}\n"
+                f"Please run scripts/master_preprocessing.py first to create standardized data."
+            )
+        
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+        
+        print(f"Loaded preprocessing metadata")
+        print(f"  Total samples: {metadata['total_samples']}")
+        print(f"  Data checksum: {metadata['data_checksum']}")
+        
+        # Load the CLEANED dataframe (already processed by master_preprocessing)
+        cleaned_data_path = metadata['cleaned_data_path']
+        df = pd.read_pickle(cleaned_data_path)
+        print(f"Loaded cleaned dataframe from: {cleaned_data_path}")
+        print(f"  Shape: {df.shape}")
+        print(f"  Columns: {df.columns.tolist()}")
+        
+        # NOTE: We do NOT select features here!
+        # Feature selection happens in the training script AFTER CatBoost encoding
+        # because encoding changes the feature structure (categorical → numerical)
+        # We load ALL features and let the training script handle selection
+        
+        if feature_json_path:
+            print(f"[INFO] Feature JSON provided: {feature_json_path}")
+            print(f"[INFO] Feature selection will happen in training script after encoding")
+        
+        # === Load and apply indices DIRECTLY (no mapping needed) ===
+        # The indices were created from this exact cleaned dataframe by master_preprocessing
+        size_str = 'full' if sample_size == 'full' or sample_size is None else str(sample_size)
+        
+        train_idx = np.load(f"{indices_dir}/train_indices_{size_str}.npy")
+        val_idx = np.load(f"{indices_dir}/val_indices_{size_str}.npy")
+        test_idx = np.load(f"{indices_dir}/test_indices_{size_str}.npy")
+        
+        print(f"Loaded indices for sample size: {size_str}")
+        print(f"  train: {len(train_idx)} samples")
+        print(f"  val:   {len(val_idx)} samples")
+        print(f"  test:  {len(test_idx)} samples")
+        
+        # Apply indices DIRECTLY using .loc (indices are row numbers from cleaned df)
+        # These indices are guaranteed to be valid because they were created from this same df
+        df_train = df.loc[train_idx].copy()
+        df_val = df.loc[val_idx].copy()
+        df_test = df.loc[test_idx].copy()
+        
+        print(f"Applied indices directly to cleaned dataframe:")
+        print(f"  train: {len(df_train)} samples")
+        print(f"  val:   {len(df_val)} samples")
+        print(f"  test:  {len(df_test)} samples")
+        print(f"  total: {len(df_train) + len(df_val) + len(df_test)} samples")
+        
+        # Verify we got the expected samples
+        expected_total = len(train_idx) + len(val_idx) + len(test_idx)
+        actual_total = len(df_train) + len(df_val) + len(df_test)
+        if expected_total != actual_total:
+            raise RuntimeError(
+                f"Index application mismatch! Expected {expected_total} total samples, got {actual_total}"
+            )
+        
+        # Split features and target
+        X_train, y_train = df_train.drop('status', axis=1), df_train['status']
+        X_val, y_val = df_val.drop('status', axis=1), df_val['status']
+        X_test, y_test = df_test.drop('status', axis=1), df_test['status']
 
         print("[DEBUG][DATA] X_train columns:", X_train.columns.tolist())
         print("[DEBUG][DATA] X_val columns:", X_val.columns.tolist())
@@ -508,15 +510,30 @@ def transform_dataset(
 def build_dataset(
     path: Union[str, Path], transformations: Transformations, cache: bool,
     sample_size: int = None, indices_dir: str = None, selected_features: list = None,
-    mi_json_path: str = None
+    feature_json_path: str = None
 ) -> Dataset:
+    """
+    Build dataset from standardized preprocessed data.
+    
+    Args:
+        path: Path to dataset directory (used for cache)
+        transformations: Data transformations to apply
+        cache: Whether to cache transformed data
+        sample_size: Sample size to load ('full', 10000, 100000, etc.)
+        indices_dir: Directory containing cleaned_data.pkl and indices
+        selected_features: Optional list of features to select
+        feature_json_path: Path to feature JSON (MI-25 or FI-25)
+    
+    Returns:
+        Dataset with cleaned data, applied indices, and selected features
+    """
     path = Path(path)
     dataset = Dataset.from_dir(
         path, 
         sample_size=sample_size, 
         indices_dir=indices_dir, 
         selected_features=selected_features,
-        mi_json_path=mi_json_path
+        feature_json_path=feature_json_path
     )
     return transform_dataset(dataset, transformations, path if cache else None)
 

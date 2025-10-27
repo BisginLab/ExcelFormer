@@ -130,7 +130,7 @@ def get_training_args():
         'mi-25': '../../data/feature_regimes/mi_top25_catenc(1)_norm(quantile).json',
         'fi-25': '../../data/feature_regimes/xgboost_feature_importance_20250827_230123.json'
     }
-    args.mi_json = FEATURE_JSON_PATHS[args.features]
+    args.feature_json_path = FEATURE_JSON_PATHS[args.features]
 
     args.output = f'{args.output}/mixup({args.mix_type})/{args.dataset}/{args.seed}'
     if not os.path.isdir(args.output):
@@ -191,41 +191,36 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 args, cfg = get_training_args()
 seed_everything(args.seed)
 
-# === Load indices for ALL cases (including full dataset) ===
-# This ensures fair comparison with XGBoost by using committed splits for all sizes
-indices_dir = './standardized_data'
-if args.sample_size is not None:
-    # Load subset indices
-    train_indices = np.load(f"{indices_dir}/train_indices_{args.sample_size}.npy")
-    val_indices = np.load(f"{indices_dir}/val_indices_{args.sample_size}.npy")
-    test_indices = np.load(f"{indices_dir}/test_indices_{args.sample_size}.npy")
-    print(f"Loaded indices for sample size {args.sample_size}:")
-    print(f"  train: {train_indices.shape}, val: {val_indices.shape}, test: {test_indices.shape}")
-else:
-    # Load full dataset indices (should match XGBoost's full split)
-    train_indices = np.load(f"{indices_dir}/train_indices_full.npy")
-    val_indices = np.load(f"{indices_dir}/val_indices_full.npy")
-    test_indices = np.load(f"{indices_dir}/test_indices_full.npy")
-    print(f"Loaded indices for full dataset:")
-    print(f"  train: {train_indices.shape}, val: {val_indices.shape}, test: {test_indices.shape}")
-
 """ prepare Datasets and Dataloaders """
 assert args.dataset in DATASETS
 T_cache = False # save data preprocessing cache
 normalization = args.normalization if args.normalization != '__none__' else None
 transformation = Transformations(normalization=normalization)
 
-'''
-transformation = Transformations(
-    normalization=normalization,
-    num_nan_policy='drop-rows'  # Change from None or 'mean' to 'drop-rows'
-)'''
+# Load dataset using standardized preprocessing
+# NOTE: All data loading, cleaning, and index application happens in lib/data.py
+# This includes loading cleaned_data.pkl and applying pre-computed indices
+indices_dir = '../../data/splits'  # Path to standardized data created by master_preprocessing.py
+print(f"\n{'='*60}")
+print(f"LOADING STANDARDIZED DATA")
+print(f"{'='*60}")
+print(f"Data directory: {indices_dir}")
+print(f"Feature set: {args.features}")
+print(f"Sample size: {args.sample_size if args.sample_size else 'full'}")
+print(f"Feature JSON: {args.feature_json_path}")
+print(f"\nData loading (lib/data.py):")
+print(f"  1. Loads cleaned_data.pkl with ALL features")
+print(f"  2. Applies pre-computed train/val/test indices")
+print(f"\nFeature selection (this script, AFTER encoding):")
+print(f"  3. CatBoost encodes categorical features")
+print(f"  4. Selects features from JSON after encoding")
+print(f"{'='*60}\n")
 
-# Always pass indices_dir since we now load indices for all cases
 dataset = build_dataset(
     DATA / args.dataset, transformation, T_cache,
-    sample_size=args.sample_size, indices_dir=indices_dir,
-    mi_json_path=args.mi_json
+    sample_size=args.sample_size, 
+    indices_dir=indices_dir,
+    feature_json_path=args.feature_json_path
 )
 
 if dataset.X_num['train'].dtype == np.float64:
@@ -247,21 +242,24 @@ else:
     X_num_processed = dataset.X_num  # Use as-is if no catenc
 
 #############################
-# FEATURE SELECTION (FROM JSON ONLY - NO FALLBACK)
+# FEATURE SELECTION (AFTER CATBOOST ENCODING)
 #############################
+# NOTE: This is where actual feature selection happens!
+# data.py loaded ALL features - we select here AFTER encoding
+# because CatBoost encoding changes the feature structure
 
 print(f"[FEATURE SELECTION] Using feature mode: {args.features}")
-print(f"[FEATURE SELECTION] Loading features from JSON: {args.mi_json}")
+print(f"[FEATURE SELECTION] Loading features from JSON: {args.feature_json_path}")
 
-if not os.path.exists(args.mi_json):
-    raise FileNotFoundError(f"Feature JSON file not found: {args.mi_json}")
+if not os.path.exists(args.feature_json_path):
+    raise FileNotFoundError(f"Feature JSON file not found: {args.feature_json_path}")
 
 # Load pre-computed feature selection from JSON
-with open(args.mi_json, 'r') as f:
-    mi_data = json.load(f)
+with open(args.feature_json_path, 'r') as f:
+    feature_data = json.load(f)
 
 # Extract selected features by name
-selected_feature_names = mi_data['selected_names']
+selected_feature_names = feature_data['selected_names']
 K = len(selected_feature_names)
 
 print(f"[FEATURE SELECTION] JSON selected features: {selected_feature_names}")
@@ -297,20 +295,21 @@ print(f"[FEATURE SELECTION] Reordered features: {[all_feature_names[i] for i in 
 # Slice the data using the found indices
 X_num_processed = {k: v[:, keep_idx] for k, v in X_num_processed.items()}
 
-# Get MI scores for the selected features (for feat_mix if needed)
-mi_scores = np.array(mi_data['mi_scores_aligned'])
-selected_mi_scores = mi_scores[keep_idx]
+# Get feature importance scores for the selected features (for feat_mix if needed)
+# NOTE: Both MI-25 and FI-25 JSONs have 'mi_scores_aligned' key for compatibility
+feature_scores = np.array(feature_data['mi_scores_aligned'])
+selected_feature_scores = feature_scores[keep_idx]
 
 print(f"[FEATURE SELECTION] Loaded {K} features from JSON. Shapes:",
       {k: v.shape for k, v in X_num_processed.items()})
 print(f"[FEATURE SELECTION] Selected feature names: {selected_feature_names}")
 print(f"[FEATURE SELECTION] Found indices: {keep_idx}")
-print(f"[FEATURE SELECTION] Using pre-computed MI scores from JSON")
+print(f"[FEATURE SELECTION] Using pre-computed feature scores from JSON")
 
-# Normalized MI for feat_mix (stable if sum == 0)
-den = selected_mi_scores.sum()
-sorted_mi_scores_np = (selected_mi_scores / den).astype(np.float32) if den > 0 else np.ones(K, np.float32) / K
-sorted_mi_scores = torch.from_numpy(sorted_mi_scores_np).float().to(device)
+# Normalized feature scores for feat_mix (stable if sum == 0)
+den = selected_feature_scores.sum()
+sorted_feature_scores_np = (selected_feature_scores / den).astype(np.float32) if den > 0 else np.ones(K, np.float32) / K
+sorted_feature_scores = torch.from_numpy(sorted_feature_scores_np).float().to(device)
 
 # Now build tensors from the sliced matrices
 X_num, X_cat, ys = prepare_tensors(
@@ -349,11 +348,12 @@ print("\nStarting training...")
 
 # Print what features we're actually training with
 print(f"\n=== FEATURES USED FOR TRAINING ===")
+print(f"Feature set: {args.features}")
 print(f"Total features: {n_num_features}")
 print(f"X_num train shape: {X_num['train'].shape}")
 print(f"X_num val shape: {X_num['val'].shape}")
 print(f"X_num test shape: {X_num['test'].shape}")
-print(f"These are the top {n_num_features} features by MI score:")
+print(f"These are the selected {n_num_features} features:")
 for i, feature_name in enumerate(selected_feature_names, 1):
     print(f"  {i:2d}. {feature_name}")
 print(f"=== END FEATURE INFO ===\n")
@@ -687,7 +687,7 @@ for epoch in range(start_epoch, n_epochs + 1):
         else:
             preds, feat_masks, shuffled_ids = apply_model(x_num, x_cat, mixup=True)
             if args.mix_type == 'feat_mix':
-                lambdas = (sorted_mi_scores * feat_masks).sum(1) # bs
+                lambdas = (sorted_feature_scores * feat_masks).sum(1) # bs
                 lambdas2 = 1 - lambdas
             elif args.mix_type == 'hidden_mix':
                 lambdas = feat_masks
