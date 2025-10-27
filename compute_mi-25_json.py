@@ -46,13 +46,13 @@ def seed_everything(seed: int = 42):
 def main():
     # Fixed configuration
     dataset = "android_security"
-    indices_dir = "data/splits"
+    indices_dir = "/workspace/data/splits"
     sample_size = "full"
     normalization = "quantile"
     catenc = True
     k = 25
     seed = 42
-    output_dir = "data/feature_regimes"
+    output_dir = "/workspace/data/feature_regimes"
     
     print("="*60)
     print("COMPUTING MI-25 JSON WITH FIXED CONFIGURATION")
