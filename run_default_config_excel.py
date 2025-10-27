@@ -1,14 +1,21 @@
 print("Entered training script...")
 '''
-python run_default_config_excel.py   --dataset android_security   --output result/ExcelFormer/default   --seed 42   --early_stop 20   --save   --catenc   --sample_size 10000   --mi_json "output/mi/android_security/full/mi_top25_catenc(1)_norm(quantile).json"
-python run_default_config_excel.py   --dataset android_security   --output result/ExcelFormer/default   --seed 42   --early_stop 20   --save   --catenc   --sample_size 100000   --mi_json "output/mi/android_security/full/mi_top25_catenc(1)_norm(quantile).json"
-python run_default_config_excel.py   --dataset android_security   --output result/ExcelFormer/default   --seed 42   --early_stop 20   --save   --catenc   --sample_size full   --mi_json "output/mi/android_security/full/mi_top25_catenc(1)_norm(quantile).json"
+USAGE EXAMPLES:
+---------------
 
-python run_default_config_excel.py   --dataset android_security   --output result/ExcelFormer/xgbfi   --seed 42   --early_stop 20   --save   --catenc   --sample_size 10000   --mi_json "output/mi/android_security/full/xgboost_feature_importance_20250827_230123.json"
-python run_default_config_excel.py   --dataset android_security   --output result/ExcelFormer/xgbfi   --seed 42   --early_stop 20   --save   --catenc   --sample_size 100000   --mi_json "output/mi/android_security/full/xgboost_feature_importance_20250827_230123.json"
-python run_default_config_excel.py   --dataset android_security   --output result/ExcelFormer/xgbfi   --seed 42   --early_stop 20   --save   --catenc   --sample_size full   --mi_json "output/mi/android_security/full/xgboost_feature_importance_20250827_230123.json"
+Train with MI top 25 features (Mutual Information):
+python run_default_config_excel.py   --dataset android_security   --output results/excelformer/default   --seed 42   --early_stop 20   --save   --catenc   --sample_size 10000   --mi_json "../../data/feature_regimes/mi_top25_catenc(1)_norm(quantile).json"
+python run_default_config_excel.py   --dataset android_security   --output results/excelformer/default   --seed 42   --early_stop 20   --save   --catenc   --sample_size 100000   --mi_json "../../data/feature_regimes/mi_top25_catenc(1)_norm(quantile).json"
+python run_default_config_excel.py   --dataset android_security   --output results/excelformer/default   --seed 42   --early_stop 20   --save   --catenc   --sample_size full   --mi_json "../../data/feature_regimes/mi_top25_catenc(1)_norm(quantile).json"
 
-xgboost_feature_importance_20250827_230123
+Train with FI top 25 features (XGBoost Feature Importance):
+python run_default_config_excel.py   --dataset android_security   --output results/excelformer/xgbfi   --seed 42   --early_stop 20   --save   --catenc   --sample_size 10000   --mi_json "../../data/feature_regimes/xgboost_feature_importance_20250827_230123.json"
+python run_default_config_excel.py   --dataset android_security   --output results/excelformer/xgbfi   --seed 42   --early_stop 20   --save   --catenc   --sample_size 100000   --mi_json "../../data/feature_regimes/xgboost_feature_importance_20250827_230123.json"
+python run_default_config_excel.py   --dataset android_security   --output results/excelformer/xgbfi   --seed 42   --early_stop 20   --save   --catenc   --sample_size full   --mi_json "../../data/feature_regimes/xgboost_feature_importance_20250827_230123.json"
+
+Models will be saved to: results/excelformer/{default|xgbfi}/mixup(none)/android_security/42/{sample_size}/pytorch_model.pt
+
+NOTE: Run this script from the models/excelformer directory
 '''
 # Go to great lakes and test best model on test set.
 # Figure out how to properly evaluate xgboost and excelformer. check paper - 70s%?
@@ -94,7 +101,7 @@ XGBOOST_FEATURES = [
 
 def get_training_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=str, default='result/ExcelFormer/default')
+    parser.add_argument("--output", type=str, default='results/excelformer/default')
     parser.add_argument("--dataset", type=str)
     parser.add_argument("--normalization", type=str, default='quantile')
     parser.add_argument("--seed", type=int, default=42)
