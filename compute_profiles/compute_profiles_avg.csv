@@ -1,4 +1,0 @@
-model,sample_size,device,test_time_s,throughput_apps_per_s,cpu_max_rss_mb,peak_vram_mb,model_bytes,test_time_s_std,throughput_std
-ExcelFormer,10000,cuda,0.023,65874.982,0,659,14612431.0,,
-ExcelFormer,full,cpu,41.91466666666667,2600.2533333333336,684,0,14613967.0,2.914659042381003,187.81181717967945
-ExcelFormer,full,cuda,1.698,63967.404,0,3520,14613967.0,,

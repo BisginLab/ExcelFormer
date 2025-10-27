@@ -1,7 +1,0 @@
-run_label,dataset,feature_set,sample_size,wall_train_s,peak_ram_mb,peak_vram_mb,val_auc_last,test_auc_last,test_time_s,test_size,throughput_apps_per_s,checkpoint_bytes,checkpoint_path,started_at,finished_at
-EF-MI-25-10000,android_security,MI-25,10000,,5089,659,,,0.038,1500,39961.737,14612431,,,
-EF-MI-25-100000,android_security,MI-25,100000,,5159,3520,,,0.217,15000,69193.146,14613199,,,
-EF-MI-25-full,android_security,MI-25,full,,5401,3520,,,1.459,108624,74433.327,14613967,,,
-EF-MI-25-10000,android_security,MI-25,10000,,468,0,,,0.675,1500,2222.909,14612431,,,
-EF-MI-25-100000,android_security,MI-25,100000,,498,0,,,5.535,15000,2709.786,14613199,,,
-EF-MI-25-full,android_security,MI-25,full,,736,0,,,38.933,108624,2789.997,14613967,,,
