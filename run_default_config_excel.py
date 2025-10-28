@@ -20,7 +20,12 @@ FEATURE MODES:
 - fi-25: Top 25 features selected by XGBoost Feature Importance
          (uses: ../../data/feature_regimes/xgboost_feature_importance_20250827_230123.json)
 
-Models will be saved to: results/excelformer/{mi-25|fi-25}/mixup(none)/android_security/42/{sample_size}/pytorch_model.pt
+OUTPUT:
+-------
+All outputs are saved with the feature mode in the directory structure:
+- Models: results/excelformer/{mi-25|fi-25}/mixup(none)/android_security/42/{sample_size}/pytorch_model.pt
+- Results: results/excelformer/{mi-25|fi-25}/mixup(none)/android_security/42/{sample_size}/results.json
+- Logs: results/excelformer/logs/excelformer_{features}_{sample_size}_training_log_{timestamp}.txt
 
 NOTE: The --features argument is REQUIRED. Run this script from the models/excelformer directory.
 '''
@@ -61,6 +66,22 @@ from category_encoders import CatBoostEncoder
 
 from bin import ExcelFormer
 from lib import Transformations, build_dataset, prepare_tensors, make_optimizer, DATA
+from datetime import datetime
+
+# Logger class for saving training output to file
+class Logger:
+    def __init__(self, filename):
+        self.terminal = sys.stdout
+        self.log = open(filename, 'w')
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+        self.log.flush()
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
 
 # Diagnostic information
 print("Python executable:", sys.executable)
@@ -189,6 +210,22 @@ def seed_everything(seed=42):
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 args, cfg = get_training_args()
+
+# Set up logging to file
+timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+os.makedirs('/workspace/results/excelformer/logs', exist_ok=True)
+log_filename = f'/workspace/results/excelformer/logs/excelformer_{args.features}_{args.sample_size if args.sample_size else "full"}_training_log_{timestamp}.txt'
+sys.stdout = Logger(log_filename)
+
+print("="*60)
+print(f"EXCELFORMER TRAINING SCRIPT - FEATURE MODE: {args.features.upper()}")
+print("="*60)
+print(f"Selected feature mode: {args.features}")
+print(f"Sample size: {args.sample_size if args.sample_size else 'full'}")
+print(f"Output directory: {args.output}")
+print(f"Log file: {log_filename}")
+print("="*60)
+
 seed_everything(args.seed)
 
 """ prepare Datasets and Dataloaders """
@@ -794,3 +831,15 @@ else:
 print("[DEBUG][TRAIN] X_num['train'] shape:", X_num['train'].shape)
 print("[DEBUG][TRAIN] X_num['val'] shape:", X_num['val'].shape)
 print("[DEBUG][TRAIN] X_num['test'] shape:", X_num['test'].shape)
+
+# Restore normal stdout and print final message
+sys.stdout = sys.stdout.terminal
+print(f"\n{'='*60}")
+print(f"EXCELFORMER TRAINING COMPLETE")
+print(f"{'='*60}")
+print(f"✅ Training log saved to: {log_filename}")
+print(f"✅ Feature mode: {args.features.upper()}")
+print(f"✅ Sample size: {args.sample_size if args.sample_size else 'full'}")
+print(f"✅ Model saved to: {args.output}/pytorch_model.pt")
+print(f"✅ Results saved to: {args.output}/results.json")
+print(f"{'='*60}")
