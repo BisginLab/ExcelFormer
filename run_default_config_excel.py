@@ -4,14 +4,14 @@ USAGE EXAMPLES:
 ---------------
 
 Train with MI top 25 features (Mutual Information):
-python run_default_config_excel.py   --dataset android_security   --output results/excelformer/mi-25   --seed 42   --early_stop 20   --save   --catenc   --sample_size 10000   --features mi-25
-python run_default_config_excel.py   --dataset android_security   --output results/excelformer/mi-25   --seed 42   --early_stop 20   --save   --catenc   --sample_size 100000   --features mi-25
-python run_default_config_excel.py   --dataset android_security   --output results/excelformer/mi-25   --seed 42   --early_stop 20   --save   --catenc   --sample_size full   --features mi-25
+python run_default_config_excel.py   --dataset android_security   --output /workspace/results/excelformer/mi-25   --seed 42   --early_stop 20   --save   --catenc   --sample_size 10000   --features mi-25
+python run_default_config_excel.py   --dataset android_security   --output /workspace/results/excelformer/mi-25   --seed 42   --early_stop 20   --save   --catenc   --sample_size 100000   --features mi-25
+python run_default_config_excel.py   --dataset android_security   --output /workspace/results/excelformer/mi-25   --seed 42   --early_stop 20   --save   --catenc   --sample_size full   --features mi-25
 
 Train with FI top 25 features (XGBoost Feature Importance):
-python run_default_config_excel.py   --dataset android_security   --output results/excelformer/fi-25   --seed 42   --early_stop 20   --save   --catenc   --sample_size 10000   --features fi-25
-python run_default_config_excel.py   --dataset android_security   --output results/excelformer/fi-25   --seed 42   --early_stop 20   --save   --catenc   --sample_size 100000   --features fi-25
-python run_default_config_excel.py   --dataset android_security   --output results/excelformer/fi-25   --seed 42   --early_stop 20   --save   --catenc   --sample_size full   --features fi-25
+python run_default_config_excel.py   --dataset android_security   --output /workspace/results/excelformer/fi-25   --seed 42   --early_stop 20   --save   --catenc   --sample_size 10000   --features fi-25
+python run_default_config_excel.py   --dataset android_security   --output /workspace/results/excelformer/fi-25   --seed 42   --early_stop 20   --save   --catenc   --sample_size 100000   --features fi-25
+python run_default_config_excel.py   --dataset android_security   --output /workspace/results/excelformer/fi-25   --seed 42   --early_stop 20   --save   --catenc   --sample_size full   --features fi-25
 
 FEATURE MODES:
 --------------
@@ -23,9 +23,9 @@ FEATURE MODES:
 OUTPUT:
 -------
 All outputs are saved with the feature mode in the directory structure:
-- Models: results/excelformer/{mi-25|fi-25}/mixup(none)/android_security/42/{sample_size}/pytorch_model.pt
-- Results: results/excelformer/{mi-25|fi-25}/mixup(none)/android_security/42/{sample_size}/results.json
-- Logs: results/excelformer/logs/excelformer_{features}_{sample_size}_training_log_{timestamp}.txt
+- Models: /workspace/results/excelformer/{mi-25|fi-25}/mixup(none)/android_security/42/{sample_size}/pytorch_model.pt
+- Results: /workspace/results/excelformer/{mi-25|fi-25}/mixup(none)/android_security/42/{sample_size}/results.json
+- Logs: /workspace/results/excelformer/logs/excelformer_{features}_{sample_size}_training_log_{timestamp}.txt
 
 NOTE: The --features argument is REQUIRED. Run this script from the models/excelformer directory.
 '''
@@ -129,7 +129,7 @@ XGBOOST_FEATURES = [
 
 def get_training_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=str, default='results/excelformer/mi-25')
+    parser.add_argument("--output", type=str, default='/workspace/results/excelformer/mi-25')
     parser.add_argument("--dataset", type=str)
     parser.add_argument("--normalization", type=str, default='quantile')
     parser.add_argument("--seed", type=int, default=42)
