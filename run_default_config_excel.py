@@ -146,12 +146,37 @@ def get_training_args():
                         help="Feature set to use: mi-25 (Mutual Information top 25), fi-25 (Feature Importance top 25)")
     args = parser.parse_args()
     
-    # Map feature selection to JSON paths
-    FEATURE_JSON_PATHS = {
-        'mi-25': '../../data/feature_regimes/mi_top25_catenc(1)_norm(quantile).json',
-        'fi-25': '../../data/feature_regimes/xgboost_feature_importance_20250827_230123.json'
-    }
-    args.feature_json_path = FEATURE_JSON_PATHS[args.features]
+    # Map feature selection to JSON paths - find latest timestamped files
+    import glob
+    def find_latest_feature_json(feature_type):
+        """Find the latest timestamped feature JSON file"""
+        base_paths = ['../../data/feature_regimes', '/workspace/data/feature_regimes']
+        
+        for base_path in base_paths:
+            if feature_type == 'mi-25':
+                # Try new timestamped format first
+                pattern = f'{base_path}/mi-25_features_*.json'
+                files = glob.glob(pattern)
+                if files:
+                    return max(files, key=os.path.getctime)
+                # Fallback to old format
+                old_path = f'{base_path}/mi_top25_catenc(1)_norm(quantile).json'
+                if os.path.exists(old_path):
+                    return old_path
+            else:  # fi-25
+                # Try new timestamped format first
+                pattern = f'{base_path}/fi-25_features_*.json'
+                files = glob.glob(pattern)
+                if files:
+                    return max(files, key=os.path.getctime)
+                # Fallback to old format
+                old_path = f'{base_path}/xgboost_feature_importance_20250827_230123.json'
+                if os.path.exists(old_path):
+                    return old_path
+        
+        raise FileNotFoundError(f"Could not find {feature_type} feature JSON file")
+    
+    args.feature_json_path = find_latest_feature_json(args.features)
 
     args.output = f'{args.output}/mixup({args.mix_type})/{args.dataset}/{args.seed}'
     if not os.path.isdir(args.output):
@@ -333,9 +358,19 @@ print(f"[FEATURE SELECTION] Reordered features: {[all_feature_names[i] for i in 
 X_num_processed = {k: v[:, keep_idx] for k, v in X_num_processed.items()}
 
 # Get feature importance scores for the selected features (for feat_mix if needed)
-# NOTE: Both MI-25 and FI-25 JSONs have 'mi_scores_aligned' key for compatibility
-feature_scores = np.array(feature_data['mi_scores_aligned'])
-selected_feature_scores = feature_scores[keep_idx]
+# Handle both old format (mi_scores_aligned) and new format (selected_importance)
+if 'mi_scores_aligned' in feature_data:
+    # Old format: scores aligned to feature_order
+    feature_scores = np.array(feature_data['mi_scores_aligned'])
+    selected_feature_scores = feature_scores[keep_idx]
+elif 'selected_importance' in feature_data:
+    # New format: dict mapping feature names to scores
+    importance_dict = feature_data['selected_importance']
+    selected_feature_scores = np.array([importance_dict.get(name, 0.0) for name in selected_feature_names])
+else:
+    # Fallback: uniform scores
+    print("[WARN] No feature scores found in JSON, using uniform scores")
+    selected_feature_scores = np.ones(len(selected_feature_names)) / len(selected_feature_names)
 
 print(f"[FEATURE SELECTION] Loaded {K} features from JSON. Shapes:",
       {k: v.shape for k, v in X_num_processed.items()})
