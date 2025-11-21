@@ -58,9 +58,6 @@ class Tokenizer(nn.Module):
         self.bias = nn.Parameter(Tensor(d_bias, d_token)) if bias else None
         self.bias2 = nn.Parameter(Tensor(d_bias, d_token)) if bias else None
 
-        print(f"d_numerical: {d_numerical}")
-        print(f"weight shape: {self.weight.shape}")
-        print(f"bias shape: {self.bias.shape if self.bias is not None else 'None'}")
         # v4
         attenuated_kaiming_uniform_(self.weight)
         attenuated_kaiming_uniform_(self.weight2)
